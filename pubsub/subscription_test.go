@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSubscription_ItStartsEmptyAndBuffered(t *testing.T) {
+func TestSubscription_ItShouldStartEmptyAndBuffered(t *testing.T) {
 	b := NewBus()
 	sub, err := Subscribe(b, NewTopic[int]("orders"))
 	require.NoError(t, err)
@@ -23,7 +23,7 @@ func TestSubscription_ItStartsEmptyAndBuffered(t *testing.T) {
 	}
 }
 
-func TestSubscription_ItTracksTwoSubscriptionsIndependently(t *testing.T) {
+func TestSubscription_ItShouldTrackTwoSubscriptionsIndependently(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	first, err := Subscribe(b, topic)
@@ -43,7 +43,7 @@ func TestSubscription_ItTracksTwoSubscriptionsIndependently(t *testing.T) {
 	assert.NotPanics(t, second.Unsubscribe)
 }
 
-func TestSubscription_UnsubscribeIsIdempotentAndConcurrent(t *testing.T) {
+func TestSubscription_ItShouldAllowIdempotentConcurrentUnsubscribe(t *testing.T) {
 	b := NewBus()
 	sub, err := Subscribe(b, NewTopic[int]("orders"))
 	require.NoError(t, err)
@@ -66,7 +66,7 @@ func TestSubscription_UnsubscribeIsIdempotentAndConcurrent(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestSubscription_UnsubscribeWaitsForAnActivePublishCriticalSection(t *testing.T) {
+func TestSubscription_ItShouldWaitForAnActivePublishCriticalSectionBeforeUnsubscribe(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	sub, err := Subscribe(b, topic)
@@ -107,7 +107,7 @@ func TestSubscription_UnsubscribeWaitsForAnActivePublishCriticalSection(t *testi
 	<-done
 }
 
-func TestSubscription_UnsubscribeExcludesLaterPublishes(t *testing.T) {
+func TestSubscription_ItShouldExcludeLaterPublishesAfterUnsubscribe(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	sub, err := Subscribe(b, topic)
@@ -124,7 +124,7 @@ func TestSubscription_UnsubscribeExcludesLaterPublishes(t *testing.T) {
 	}
 }
 
-func TestSubscription_RemovingLastSubscriberKeepsTopicRegistered(t *testing.T) {
+func TestSubscription_ItShouldKeepTheTopicRegisteredAfterRemovingTheLastSubscriber(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	first, err := Subscribe(b, topic)

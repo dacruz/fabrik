@@ -10,9 +10,22 @@ This is an event-notification mechanism, not a durable or reliable message
 queue. Messages are delivered at most once and are considered successfully
 delivered when they are queued for a subscriber.
 
+## Implementation status
+
+Plans 001 and 002 are implemented. The current package supports creating a
+bus and typed topics, lazy type-safe topic registration, buffered subscriptions,
+and idempotent, concurrency-safe unsubscription. Queued values remain
+readable before an unsubscribed channel closes.
+
+`Publish` currently only registers and validates a topic; it does not deliver
+messages yet. Publishing and ordering are implemented in plan 003, delivery
+errors in plan 004, shutdown in plan 005, and integration hardening in plan
+006.
+
 ## Project structure
 
-The PubSub implementation lives in its own `pubsub` package:
+The PubSub implementation lives in its own `pubsub` package. The layout below
+is the target layout; files for pending plans are not present yet:
 
 ```text
 fabrik/
@@ -46,12 +59,14 @@ fabrik/
 
 File responsibilities:
 
-- `bus.go` — `Bus`, construction, topic registry, lifecycle, and shutdown.
+- `bus.go` — `Bus`, construction, and topic registry. Lifecycle and shutdown
+  are planned for later releases.
 - `topic.go` — generic `Topic[T]`, topic creation, and type validation.
 - `subscription.go` — generic `Subscription[T]`, subscribe, and unsubscribe.
 - `state.go` — internal topic state, subscriber bookkeeping, and
   synchronization.
-- `errors.go` — delivery, shutdown, and topic-type errors.
+- `errors.go` — topic-type and nil-bus errors today; delivery and shutdown
+  errors are planned for later releases.
 
 Tests are grouped by observable behavior rather than implementation details.
 The package should expose the public API as `fabrik/pubsub`; implementation
@@ -68,8 +83,9 @@ implementation details.
 ## Bus
 
 `Bus` is the central, process-local PubSub object. It is safe to share between
-multiple goroutines and owns the topic registry, subscriptions, publishing,
-and shutdown lifecycle.
+multiple goroutines and currently owns the topic registry and subscriptions.
+Publishing and shutdown are part of the target design and are implemented in
+later plans.
 
 Conceptually, it contains global state plus independent state for each topic:
 
@@ -87,7 +103,7 @@ type topicState struct {
 }
 ```
 
-The bus is responsible for:
+The target bus is responsible for:
 
 - registering and looking up exact topics;
 - ensuring a topic name is associated with only one event type;
@@ -100,7 +116,7 @@ The bus does not provide persistence, replay, cross-process delivery, or
 durable message processing. Its state exists only for the lifetime of the Go
 process.
 
-## Semantics
+## Target semantics
 
 - Every subscriber receives every message published to its topic.
 - Topics use exact matching. There are no wildcards or topic hierarchies.
@@ -133,7 +149,7 @@ type Subscription[T any] struct {
 	Events <-chan T
 }
 
-func Subscribe[T any](b *Bus, topic Topic[T]) *Subscription[T]
+func Subscribe[T any](b *Bus, topic Topic[T]) (*Subscription[T], error)
 func Publish[T any](b *Bus, topic Topic[T], value T) error
 func Shutdown(ctx context.Context, b *Bus) error
 ```
@@ -202,8 +218,9 @@ publication order. Topics do not block one another.
 
 Unsubscription is safe to call multiple times and may run concurrently with
 publishing. Once unsubscription has completed, the subscriber receives no
-future messages. Messages already queued before unsubscription may still be
-read by the consumer, depending on the chosen channel-closing behavior.
+future messages. The bus removes the subscriber and closes its channel while
+holding the topic lock, so values queued before unsubscription remain readable
+before the channel reports closed.
 
 When the last subscriber leaves a topic, the topic remains registered but
 future messages are discarded until a new subscriber joins.
