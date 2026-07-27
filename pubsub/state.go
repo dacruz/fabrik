@@ -22,6 +22,8 @@ type topicState struct {
 	nextID      uint64
 }
 
+// addSubscriberLocked adds subscriber to the topic and returns its identifier.
+// The caller must hold s.mu.
 func (s *topicState) addSubscriberLocked(subscriber subscriber) uint64 {
 	s.nextID++
 	id := s.nextID
@@ -58,9 +60,10 @@ func (s *topicState) closeSubscribers() {
 	s.mu.Unlock()
 }
 
-// publish delivers value to every subscriber that was registered when the
-// topic lock was acquired. The non-blocking send keeps a slow subscriber from
-// delaying other subscribers or publishers on unrelated topics.
+// publishLocked delivers value to every subscriber that was registered when
+// the topic lock was acquired. The non-blocking send keeps a slow subscriber
+// from delaying other subscribers or publishers on unrelated topics. The
+// caller must hold s.mu.
 func (s *topicState) publishLocked(value any) int {
 	dropped := 0
 	for _, subscriber := range s.subscribers {
@@ -71,6 +74,8 @@ func (s *topicState) publishLocked(value any) int {
 	return dropped
 }
 
+// operate validates the requested event type and runs operation while holding
+// the topic lock.
 func (s *topicState) operate(requested reflect.Type, name string, operation func(*topicState) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -80,6 +85,8 @@ func (s *topicState) operate(requested reflect.Type, name string, operation func
 	return operation(s)
 }
 
+// validateLocked checks the requested event type against the registered type.
+// The caller must hold s.mu.
 func (s *topicState) validateLocked(requested reflect.Type, name string) error {
 	if s.eventType == requested {
 		return nil
