@@ -10,7 +10,7 @@ import (
 type orderCreated struct{ ID int }
 type orderCancelled struct{ ID int }
 
-func TestNewBusIsUsableAndEmpty(t *testing.T) {
+func TestBus_ItShouldCreateAUsableEmptyRegistry(t *testing.T) {
 	b := NewBus()
 	if b == nil {
 		t.Fatal("NewBus returned nil")
@@ -20,7 +20,7 @@ func TestNewBusIsUsableAndEmpty(t *testing.T) {
 	}
 }
 
-func TestTopicsRegisterByExactNameAndType(t *testing.T) {
+func TestBus_ItShouldRegisterExactTopicNamesAndTypes(t *testing.T) {
 	b := NewBus()
 	if _, err := Subscribe(b, NewTopic[orderCreated]("orders")); err != nil {
 		t.Fatal(err)
@@ -33,7 +33,7 @@ func TestTopicsRegisterByExactNameAndType(t *testing.T) {
 	}
 }
 
-func TestTopicTypeConflictIsInspectable(t *testing.T) {
+func TestBus_ItShouldReportInspectableTopicTypeConflicts(t *testing.T) {
 	b := NewBus()
 	name := "orders"
 	if err := Publish(b, NewTopic[orderCreated](name), orderCreated{}); err != nil {
@@ -52,7 +52,7 @@ func TestTopicTypeConflictIsInspectable(t *testing.T) {
 	}
 }
 
-func TestEmptyTopicNameIsOpaque(t *testing.T) {
+func TestBus_ItShouldTreatEmptyTopicNamesAsOpaque(t *testing.T) {
 	b := NewBus()
 	if err := Publish(b, NewTopic[int](""), 1); err != nil {
 		t.Fatal(err)
@@ -65,7 +65,7 @@ func TestEmptyTopicNameIsOpaque(t *testing.T) {
 	}
 }
 
-func TestTopicTypeIsStableForNamedAndPointerTypes(t *testing.T) {
+func TestTopic_ItShouldPreserveNamedAndPointerTypes(t *testing.T) {
 	type named string
 	if got := NewTopic[named]("named").Type(); got != reflect.TypeOf(named("")) {
 		t.Fatalf("named type = %v", got)
@@ -75,7 +75,7 @@ func TestTopicTypeIsStableForNamedAndPointerTypes(t *testing.T) {
 	}
 }
 
-func TestConcurrentRegistration(t *testing.T) {
+func TestBus_ItShouldSupportConcurrentRegistration(t *testing.T) {
 	b := NewBus()
 	const workers = 100
 	var wg sync.WaitGroup
