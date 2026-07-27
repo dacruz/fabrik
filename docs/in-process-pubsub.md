@@ -12,18 +12,18 @@ delivered when they are queued for a subscriber.
 
 ## Implementation status
 
-Plans 001 through 005 are implemented. The current package supports creating a
+Plans 001 through 006 are implemented. The current package supports creating a
 bus and typed topics, lazy type-safe topic registration, buffered subscriptions,
 idempotent, concurrency-safe unsubscription, non-blocking per-topic fan-out
 with ordering, bounded delivery errors for dropped subscriber deliveries, and
 graceful bus shutdown with buffered draining.
 
-Integration hardening is planned in plan 006.
+Integration hardening is implemented in plan 006.
 
 ## Project structure
 
-The PubSub implementation lives in its own `pubsub` package. The layout below
-is the target layout; files for pending plans are not present yet:
+The PubSub implementation lives in its own `pubsub` package. The current
+layout is:
 
 ```text
 fabrik/
@@ -47,7 +47,6 @@ fabrik/
     ├── publish_test.go
     ├── subscription_test.go
     ├── shutdown_test.go
-    ├── concurrency_test.go
     │
     └── integration/
         ├── fanout_test.go
