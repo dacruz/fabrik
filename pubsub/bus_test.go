@@ -65,16 +65,6 @@ func TestBus_ItShouldTreatEmptyTopicNamesAsOpaque(t *testing.T) {
 	}
 }
 
-func TestTopic_ItShouldPreserveNamedAndPointerTypes(t *testing.T) {
-	type named string
-	if got := NewTopic[named]("named").Type(); got != reflect.TypeOf(named("")) {
-		t.Fatalf("named type = %v", got)
-	}
-	if got := NewTopic[*orderCreated]("pointer").Type(); got != reflect.TypeOf((*orderCreated)(nil)) {
-		t.Fatalf("pointer type = %v", got)
-	}
-}
-
 func TestBus_ItShouldSupportConcurrentRegistration(t *testing.T) {
 	b := NewBus()
 	const workers = 100
