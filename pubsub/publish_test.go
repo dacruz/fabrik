@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPublish_FansOutToEverySubscriber(t *testing.T) {
+func TestPublish_ItShouldFanOutToEverySubscriber(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	first, err := Subscribe(b, topic)
@@ -28,7 +28,7 @@ func TestPublish_FansOutToEverySubscriber(t *testing.T) {
 	}
 }
 
-func TestPublish_DeliversOnlyToTheExactTopic(t *testing.T) {
+func TestPublish_ItShouldDeliverOnlyToTheExactTopic(t *testing.T) {
 	b := NewBus()
 	orders := NewTopic[int]("orders")
 	ordersArchive := NewTopic[int]("orders/archive")
@@ -50,7 +50,7 @@ func TestPublish_DeliversOnlyToTheExactTopic(t *testing.T) {
 	assertEmpty(t, prefixSub)
 }
 
-func TestPublish_NewSubscribersDoNotReceiveEarlierValues(t *testing.T) {
+func TestPublish_ItShouldNotDeliverEarlierValuesToNewSubscribers(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	first, err := Subscribe(b, topic)
@@ -67,7 +67,7 @@ func TestPublish_NewSubscribersDoNotReceiveEarlierValues(t *testing.T) {
 	assert.Equal(t, []int{2}, receiveInts(t, second, 1))
 }
 
-func TestPublish_DoesNotBlockOnSlowSubscriber(t *testing.T) {
+func TestPublish_ItShouldNotBlockOnASlowSubscriber(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	slow, err := Subscribe(b, topic)
@@ -98,7 +98,7 @@ func TestPublish_DoesNotBlockOnSlowSubscriber(t *testing.T) {
 	}
 }
 
-func TestPublish_ConcurrentPublishersPreserveOneTopicOrder(t *testing.T) {
+func TestPublish_ItShouldPreserveOneTopicOrderForConcurrentPublishers(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	sub, err := Subscribe(b, topic)
@@ -111,11 +111,11 @@ func TestPublish_ConcurrentPublishersPreserveOneTopicOrder(t *testing.T) {
 	const publishers = 8
 	const valuesPerPublisher = 10
 	var wg sync.WaitGroup
-	for publisher := 0; publisher < publishers; publisher++ {
+	for publisher := range publishers {
 		wg.Add(1)
 		go func(publisher int) {
 			defer wg.Done()
-			for value := 0; value < valuesPerPublisher; value++ {
+			for value := range valuesPerPublisher {
 				assert.NoError(t, Publish(b, topic, publisher*valuesPerPublisher+value))
 			}
 		}(publisher)
