@@ -4,9 +4,9 @@
 
 ## Feature completed
 
-GitHub Actions continuously validates the Go module on every branch and pull
-request. Version-tagged commits that are reachable from `main` are published
-as GitHub releases, while tags created from other branches are rejected.
+GitHub Actions continuously validates pull requests and direct pushes to
+`main`. Version-tagged commits that are reachable from `main` are published as
+GitHub releases, while tags created from other branches are rejected.
 
 ## Depends on
 
@@ -14,8 +14,8 @@ Plans 001 through 007.
 
 ## Implementation
 
-- [x] Add a CI workflow triggered by pushes to all branches and by pull
-  requests targeting all branches.
+- [x] Add a CI workflow triggered by pushes to `main` and by pull requests,
+  avoiding duplicate checks for feature-branch pushes.
 - [x] Set up the Go version from the project requirements and cache module
   dependencies.
 - [x] Build all packages with `go build ./...`.
@@ -40,7 +40,8 @@ git push origin v0.1.0
 
 ## Completion criteria
 
-- Every branch push and pull request runs build, test, race, and vet checks.
+- Every pull request and direct push to `main` runs build, test, race, and vet
+  checks.
 - A tag on a non-`main` commit cannot publish a release.
 - A valid version tag on `main` creates a GitHub release with generated notes.
 - The release workflow validates the project before publishing.
