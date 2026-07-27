@@ -18,6 +18,10 @@ var ErrNilBus = errors.New("pubsub: nil bus")
 // publish API has a stable lifecycle error identity.
 var ErrBusClosed = errors.New("pubsub: bus is shut down")
 
+// ErrDelivery identifies a publish where one or more subscriber deliveries
+// were dropped because their bounded channels were full.
+var ErrDelivery = errors.New("pubsub: delivery failed")
+
 // TopicTypeConflictError reports both types involved in an incompatible
 // registration.
 type TopicTypeConflictError struct {
@@ -31,3 +35,15 @@ func (e *TopicTypeConflictError) Error() string {
 }
 
 func (e *TopicTypeConflictError) Unwrap() error { return ErrTopicTypeConflict }
+
+// DeliveryError reports the subscriber deliveries dropped by one publish.
+type DeliveryError struct {
+	Topic   string
+	Dropped int
+}
+
+func (e *DeliveryError) Error() string {
+	return fmt.Sprintf("pubsub: dropped %d delivery(s) for topic %q", e.Dropped, e.Topic)
+}
+
+func (e *DeliveryError) Unwrap() error { return ErrDelivery }

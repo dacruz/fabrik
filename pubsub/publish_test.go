@@ -1,6 +1,7 @@
 package pubsub
 
 import (
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -85,7 +86,10 @@ func TestPublish_ItShouldNotBlockOnASlowSubscriber(t *testing.T) {
 	go func() { done <- Publish(b, topic, cap(slow.Events)) }()
 	select {
 	case err := <-done:
-		require.NoError(t, err)
+		require.Error(t, err)
+		delivery := &DeliveryError{}
+		require.ErrorAs(t, err, &delivery)
+		assert.Equal(t, 1, delivery.Dropped)
 	case <-time.After(time.Second):
 		t.Fatal("publish blocked on a full subscriber")
 	}
@@ -95,6 +99,87 @@ func TestPublish_ItShouldNotBlockOnASlowSubscriber(t *testing.T) {
 		assert.Equal(t, cap(slow.Events), value)
 	case <-time.After(time.Second):
 		t.Fatal("available subscriber did not receive the value")
+	}
+}
+
+func TestPublish_ItShouldReportAFullSubscriberAfterExactly100QueuedValues(t *testing.T) {
+	b := NewBus()
+	topic := NewTopic[int]("orders")
+	sub, err := Subscribe(b, topic)
+	require.NoError(t, err)
+	defer sub.Unsubscribe()
+
+	for value := range subscriptionBufferSize {
+		require.NoError(t, Publish(b, topic, value))
+	}
+
+	err = Publish(b, topic, subscriptionBufferSize)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrDelivery)
+	delivery := &DeliveryError{}
+	require.ErrorAs(t, err, &delivery)
+	assert.Equal(t, topic.Name(), delivery.Topic)
+	assert.Equal(t, 1, delivery.Dropped)
+	assert.Equal(t, []int{0, 1, 2, 3, 4}, receiveInts(t, sub, 5))
+}
+
+func TestPublish_ItShouldPreserveAllFirst100ValuesInOrder(t *testing.T) {
+	b := NewBus()
+	topic := NewTopic[int]("orders")
+	sub, err := Subscribe(b, topic)
+	require.NoError(t, err)
+	defer sub.Unsubscribe()
+
+	for value := range subscriptionBufferSize {
+		require.NoError(t, Publish(b, topic, value))
+	}
+
+	assert.Equal(t, makeRange(subscriptionBufferSize), receiveInts(t, sub, subscriptionBufferSize))
+}
+
+func TestPublish_ItShouldContinueFanoutAfterDroppingOneDelivery(t *testing.T) {
+	b := NewBus()
+	topic := NewTopic[int]("orders")
+	full, err := Subscribe(b, topic)
+	require.NoError(t, err)
+	available, err := Subscribe(b, topic)
+	require.NoError(t, err)
+	defer full.Unsubscribe()
+	defer available.Unsubscribe()
+
+	for value := 0; value < cap(full.Events); value++ {
+		full.events <- value
+	}
+	err = Publish(b, topic, 100)
+	delivery := &DeliveryError{}
+	require.ErrorAs(t, err, &delivery)
+	assert.Equal(t, 1, delivery.Dropped)
+	assert.Equal(t, 100, <-available.Events)
+}
+
+func TestPublish_ItShouldSucceedWithNoSubscribers(t *testing.T) {
+	b := NewBus()
+	assert.NoError(t, Publish(b, NewTopic[int]("orders"), 1))
+}
+
+func TestPublish_ItShouldNotBlockWhenSubscriberIsFull(t *testing.T) {
+	b := NewBus()
+	topic := NewTopic[int]("orders")
+	sub, err := Subscribe(b, topic)
+	require.NoError(t, err)
+	defer sub.Unsubscribe()
+	for value := 0; value < cap(sub.Events); value++ {
+		require.NoError(t, Publish(b, topic, value))
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- Publish(b, topic, subscriptionBufferSize) }()
+	select {
+	case err := <-done:
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, ErrDelivery))
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("publish blocked on a full subscriber")
 	}
 }
 
@@ -154,4 +239,12 @@ func assertEmpty(t *testing.T, sub *Subscription[int]) {
 		t.Fatalf("unexpected value %d", value)
 	default:
 	}
+}
+
+func makeRange(count int) []int {
+	values := make([]int, count)
+	for value := range count {
+		values[value] = value
+	}
+	return values
 }

@@ -47,13 +47,17 @@ func (s *topicState) removeSubscriber(id uint64) {
 // publish delivers value to every subscriber that was registered when the
 // topic lock was acquired. The non-blocking send keeps a slow subscriber from
 // delaying other subscribers or publishers on unrelated topics.
-func (s *topicState) publish(value any) {
+func (s *topicState) publish(value any) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	dropped := 0
 	for _, subscriber := range s.subscribers {
-		subscriber.send(value)
+		if !subscriber.send(value) {
+			dropped++
+		}
 	}
+	return dropped
 }
 
 func (s *topicState) validate(requested reflect.Type, name string) error {

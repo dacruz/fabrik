@@ -12,13 +12,12 @@ delivered when they are queued for a subscriber.
 
 ## Implementation status
 
-Plans 001 through 003 are implemented. The current package supports creating a
+Plans 001 through 004 are implemented. The current package supports creating a
 bus and typed topics, lazy type-safe topic registration, buffered subscriptions,
-idempotent, concurrency-safe unsubscription, and non-blocking per-topic
-fan-out with ordering.
+idempotent, concurrency-safe unsubscription, non-blocking per-topic fan-out
+with ordering, and bounded delivery errors for dropped subscriber deliveries.
 
-Delivery errors are implemented in plan 004, shutdown in plan 005, and
-integration hardening in plan 006.
+Shutdown is planned in plan 005, and integration hardening is planned in plan 006.
 
 ## Project structure
 
@@ -59,12 +58,13 @@ File responsibilities:
 
 - `bus.go` — `Bus`, construction, and topic registry. Lifecycle and shutdown
   are planned for later releases.
-- `topic.go` — generic `Topic[T]`, topic creation, and type validation.
+- `topic.go` — generic `Topic[T]`, topic creation, type validation, and
+  publishing.
 - `subscription.go` — generic `Subscription[T]`, subscribe, and unsubscribe.
 - `state.go` — internal topic state, subscriber bookkeeping, and
   synchronization.
-- `errors.go` — topic-type and nil-bus errors today; delivery and shutdown
-  errors are planned for later releases.
+- `errors.go` — topic-type, nil-bus, and delivery errors today; shutdown errors
+  are planned for a later release.
 
 Tests are grouped by observable behavior rather than implementation details.
 The package should expose the public API as `fabrik/pubsub`; implementation
@@ -81,9 +81,9 @@ implementation details.
 ## Bus
 
 `Bus` is the central, process-local PubSub object. It is safe to share between
-multiple goroutines and currently owns the topic registry and subscriptions.
-Publishing and shutdown are part of the target design and are implemented in
-later plans.
+multiple goroutines and currently owns the topic registry, subscriptions, and
+publishing. Shutdown is part of the target design and is implemented in a
+later plan.
 
 Conceptually, it contains global state plus independent state for each topic:
 
