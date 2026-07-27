@@ -3,14 +3,12 @@ package pubsub
 import (
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestTopic_ItShouldPreserveNamedAndPointerTypes(t *testing.T) {
 	type named string
-	if got := NewTopic[named]("named").Type(); got != reflect.TypeOf(named("")) {
-		t.Fatalf("named type = %v", got)
-	}
-	if got := NewTopic[*orderCreated]("pointer").Type(); got != reflect.TypeOf((*orderCreated)(nil)) {
-		t.Fatalf("pointer type = %v", got)
-	}
+	assert.Equal(t, reflect.TypeOf(named("")), NewTopic[named]("named").Type())
+	assert.Equal(t, reflect.TypeOf((*orderCreated)(nil)), NewTopic[*orderCreated]("pointer").Type())
 }

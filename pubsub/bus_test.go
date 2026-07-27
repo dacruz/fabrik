@@ -1,10 +1,11 @@
 package pubsub
 
 import (
-	"errors"
 	"reflect"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type orderCreated struct{ ID int }
@@ -12,57 +13,41 @@ type orderCancelled struct{ ID int }
 
 func TestBus_ItShouldCreateAUsableEmptyRegistry(t *testing.T) {
 	b := NewBus()
-	if b == nil {
-		t.Fatal("NewBus returned nil")
+	if !assert.NotNil(t, b, "NewBus should return a usable bus") {
+		return
 	}
-	if err := Publish(b, NewTopic[string]("ready"), ""); err != nil {
-		t.Fatalf("first registration failed: %v", err)
-	}
+	assert.NoError(t, Publish(b, NewTopic[string]("ready"), ""))
 }
 
 func TestBus_ItShouldRegisterExactTopicNamesAndTypes(t *testing.T) {
 	b := NewBus()
-	if _, err := Subscribe(b, NewTopic[orderCreated]("orders")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Subscribe(b, NewTopic[orderCreated]("orders")); err != nil {
-		t.Fatalf("same type should be compatible: %v", err)
-	}
-	if err := Publish(b, NewTopic[orderCancelled]("orders-cancelled"), orderCancelled{}); err != nil {
-		t.Fatal(err)
-	}
+	_, err := Subscribe(b, NewTopic[orderCreated]("orders"))
+	assert.NoError(t, err)
+	_, err = Subscribe(b, NewTopic[orderCreated]("orders"))
+	assert.NoError(t, err, "same type should be compatible")
+	assert.NoError(t, Publish(b, NewTopic[orderCancelled]("orders-cancelled"), orderCancelled{}))
 }
 
 func TestBus_ItShouldReportInspectableTopicTypeConflicts(t *testing.T) {
 	b := NewBus()
 	name := "orders"
-	if err := Publish(b, NewTopic[orderCreated](name), orderCreated{}); err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, Publish(b, NewTopic[orderCreated](name), orderCreated{}))
 	_, err := Subscribe(b, NewTopic[orderCancelled](name))
-	if !errors.Is(err, ErrTopicTypeConflict) {
-		t.Fatalf("errors.Is conflict = false: %v", err)
-	}
+	assert.ErrorIs(t, err, ErrTopicTypeConflict)
 	var conflict *TopicTypeConflictError
-	if !errors.As(err, &conflict) {
-		t.Fatalf("errors.As conflict = false: %v", err)
+	if !assert.ErrorAs(t, err, &conflict) {
+		return
 	}
-	if conflict.Topic != name || conflict.ExistingType != reflect.TypeOf(orderCreated{}) || conflict.RequestedType != reflect.TypeOf(orderCancelled{}) {
-		t.Fatalf("unexpected conflict details: %#v", conflict)
-	}
+	assert.Equal(t, name, conflict.Topic)
+	assert.Equal(t, reflect.TypeOf(orderCreated{}), conflict.ExistingType)
+	assert.Equal(t, reflect.TypeOf(orderCancelled{}), conflict.RequestedType)
 }
 
 func TestBus_ItShouldTreatEmptyTopicNamesAsOpaque(t *testing.T) {
 	b := NewBus()
-	if err := Publish(b, NewTopic[int](""), 1); err != nil {
-		t.Fatal(err)
-	}
-	if err := Publish(b, NewTopic[int](""), 2); err != nil {
-		t.Fatalf("empty name should remain compatible: %v", err)
-	}
-	if err := Publish(b, NewTopic[string](""), ""); !errors.Is(err, ErrTopicTypeConflict) {
-		t.Fatalf("empty name conflict = %v", err)
-	}
+	assert.NoError(t, Publish(b, NewTopic[int](""), 1))
+	assert.NoError(t, Publish(b, NewTopic[int](""), 2), "empty name should remain compatible")
+	assert.ErrorIs(t, Publish(b, NewTopic[string](""), ""), ErrTopicTypeConflict)
 }
 
 func TestBus_ItShouldSupportConcurrentRegistration(t *testing.T) {
@@ -85,8 +70,6 @@ func TestBus_ItShouldSupportConcurrentRegistration(t *testing.T) {
 	wg.Wait()
 	close(errs)
 	for err := range errs {
-		if err != nil {
-			t.Fatalf("compatible concurrent registration failed: %v", err)
-		}
+		assert.NoError(t, err, "compatible concurrent registration should succeed")
 	}
 }
