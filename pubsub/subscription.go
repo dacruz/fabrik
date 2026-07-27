@@ -30,7 +30,7 @@ func Subscribe[T any](b *Bus, topic Topic[T]) (*Subscription[T], error) {
 			events: events,
 			topic:  state,
 		}
-		subscription.id = state.addSubscriber(subscriber{
+		subscription.id = state.addSubscriberLocked(subscriber{
 			send: func(value any) bool {
 				select {
 				case events <- value.(T):

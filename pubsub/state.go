@@ -22,10 +22,7 @@ type topicState struct {
 	nextID      uint64
 }
 
-func (s *topicState) addSubscriber(subscriber subscriber) uint64 {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+func (s *topicState) addSubscriberLocked(subscriber subscriber) uint64 {
 	s.nextID++
 	id := s.nextID
 	s.subscribers[id] = subscriber
@@ -64,10 +61,7 @@ func (s *topicState) closeSubscribers() {
 // publish delivers value to every subscriber that was registered when the
 // topic lock was acquired. The non-blocking send keeps a slow subscriber from
 // delaying other subscribers or publishers on unrelated topics.
-func (s *topicState) publish(value any) int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+func (s *topicState) publishLocked(value any) int {
 	dropped := 0
 	for _, subscriber := range s.subscribers {
 		if !subscriber.send(value) {
@@ -77,9 +71,16 @@ func (s *topicState) publish(value any) int {
 	return dropped
 }
 
-func (s *topicState) validate(requested reflect.Type, name string) error {
+func (s *topicState) operate(requested reflect.Type, name string, operation func(*topicState) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.validateLocked(requested, name); err != nil {
+		return err
+	}
+	return operation(s)
+}
+
+func (s *topicState) validateLocked(requested reflect.Type, name string) error {
 	if s.eventType == requested {
 		return nil
 	}

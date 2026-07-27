@@ -28,7 +28,7 @@ func Publish[T any](b *Bus, topic Topic[T], value T) error {
 		return ErrNilBus
 	}
 	return b.withTopic(topic.name, topic.typ, func(state *topicState) error {
-		dropped := state.publish(value)
+		dropped := state.publishLocked(value)
 		if dropped > 0 {
 			return &DeliveryError{Topic: topic.name, Dropped: dropped}
 		}

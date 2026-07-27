@@ -13,6 +13,9 @@
 // rejects new work, drains already queued values, and then closes active
 // subscription channels. Shutdown is graceful and idempotent; its context
 // controls waiting to start or join shutdown, not an already-running teardown.
+// The bus lock protects only topic registration and the lifecycle boundary;
+// per-topic locking serializes validation, delivery, subscription bookkeeping,
+// and subscriber channel closure.
 //
 // The bus does not cross process boundaries and does not execute message
 // handlers. Consumers read subscription channels and define their own handler,

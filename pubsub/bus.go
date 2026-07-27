@@ -24,13 +24,17 @@ type Bus struct {
 	mu            sync.RWMutex
 	topics        map[string]*topicState
 	state         busState
+	activeOps     int
+	activeDone    chan struct{}
 	shutdownDone  chan struct{}
 	shutdownError error
 }
 
 // NewBus returns an empty, usable bus.
 func NewBus() *Bus {
-	return &Bus{topics: make(map[string]*topicState)}
+	done := make(chan struct{})
+	close(done)
+	return &Bus{topics: make(map[string]*topicState), activeDone: done}
 }
 
 // Shutdown gracefully closes b. It first rejects new publishes and
@@ -64,7 +68,9 @@ func Shutdown(ctx context.Context, b *Bus) error {
 		for _, state := range b.topics {
 			topics = append(topics, state)
 		}
+		activeDone := b.activeDone
 		b.mu.Unlock()
+		<-activeDone
 
 		for _, state := range topics {
 			state.closeSubscribers()
@@ -100,8 +106,7 @@ func Shutdown(ctx context.Context, b *Bus) error {
 }
 
 // lock acquires the bus mutex without trapping a caller with an expired
-// context. Bus operations hold the read lock only around non-blocking topic
-// work, so this retry loop is bounded by the operation currently in progress.
+// context. Bus operations hold it only around registry and lifecycle work.
 func (b *Bus) lock(ctx context.Context) error {
 	for {
 		if b.mu.TryLock() {
@@ -123,37 +128,34 @@ func (b *Bus) lock(ctx context.Context) error {
 	}
 }
 
-// withTopic keeps the bus lifecycle read lock across topic lookup/creation and
-// the operation. This makes the operation's linearization point precede the
-// shutdown transition, preventing a send or subscriber registration from
-// racing with channel closure.
+// withTopic holds the bus lock only long enough to cross the lifecycle
+// boundary and find or register the topic. The operation then owns the topic
+// lock, so delivery and subscription bookkeeping do not retain the bus lock.
 func (b *Bus) withTopic(topicName string, eventType reflect.Type, operation func(*topicState) error) error {
-	b.mu.RLock()
+	b.mu.Lock()
 	if b.state != busOpen {
-		b.mu.RUnlock()
+		b.mu.Unlock()
 		return ErrBusClosed
 	}
 	state := b.topics[topicName]
-	if state != nil {
-		if err := state.validate(eventType, topicName); err != nil {
-			b.mu.RUnlock()
-			return err
-		}
-		err := operation(state)
-		b.mu.RUnlock()
-		return err
+	if state == nil {
+		state = &topicState{eventType: eventType, subscribers: make(map[uint64]subscriber)}
+		b.topics[topicName] = state
 	}
-	b.mu.RUnlock()
+	if b.activeOps == 0 {
+		b.activeDone = make(chan struct{})
+	}
+	b.activeOps++
+	b.mu.Unlock()
+	defer b.finishOperation()
+	return state.operate(eventType, topicName, operation)
+}
 
+func (b *Bus) finishOperation() {
 	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.state != busOpen {
-		return ErrBusClosed
+	b.activeOps--
+	if b.activeOps == 0 {
+		close(b.activeDone)
 	}
-	state = &topicState{
-		eventType:   eventType,
-		subscribers: make(map[uint64]subscriber),
-	}
-	b.topics[topicName] = state
-	return operation(state)
+	b.mu.Unlock()
 }
