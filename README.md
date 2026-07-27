@@ -1,5 +1,80 @@
 # fabrik
-Fabrik is a lightweight near-real-time Pub/Sub messaging system for decoupled communication between producers and consumers in long-lived Go processes.
+Fabrik is a lightweight, typed, process-local Pub/Sub bus for decoupled communication between producers and consumers in long-lived Go processes.
+
+## Usage
+
+Construct a bus and a typed topic. Creating a topic does not register it;
+registration is lazy and happens on the first `Subscribe` or `Publish`.
+
+```go
+b := pubsub.NewBus()
+orders := pubsub.NewTopic[OrderCreated]("orders.created")
+```
+
+Topic names are opaque and matched exactly. On one bus, a topic name can be
+used with only one Go event type. A different type for the same name returns a
+`TopicTypeConflictError`, which can be inspected with `errors.Is` and
+`errors.As`.
+
+Subscribe to receive a buffered channel. Each subscription has its own queue,
+and every current subscriber receives each publish independently.
+
+```go
+sub, err := pubsub.Subscribe(b, orders)
+if err != nil {
+	// Handle a topic type conflict or a closed bus.
+	return err
+}
+
+go func() {
+	for order := range sub.Events {
+		process(order)
+	}
+}()
+```
+
+Publish is non-blocking and returns after attempting delivery to all current
+subscribers.
+
+```go
+if err := pubsub.Publish(b, orders, OrderCreated{ID: "o-123"}); err != nil {
+	var dropped *pubsub.DeliveryError
+	if errors.As(err, &dropped) {
+		log.Printf("%d delivery dropped for %q", dropped.Dropped, dropped.Topic)
+	}
+}
+```
+
+Subscription channels have a capacity of 100 values. If a subscriber is full,
+that delivery is dropped, publishing continues for subscribers with capacity,
+and the publish returns a `DeliveryError`. The error is inspectable with
+`errors.Is(err, pubsub.ErrDelivery)` or `errors.As` to read `Topic` and
+`Dropped`.
+
+Unsubscribe is safe to call repeatedly or concurrently. It removes the
+subscriber and closes its channel; already queued values can still be read
+before the channel reports closed.
+
+```go
+sub.Unsubscribe()
+```
+
+Shutdown gracefully stops a bus. It rejects new subscriptions and publishes,
+preserves and drains values already queued in active subscriptions, then closes
+their channels. It is safe and idempotent to call concurrently. A context can
+cancel a caller waiting for shutdown to begin or for another caller's shutdown
+to finish; it does not cancel teardown already in progress.
+
+```go
+if err := pubsub.Shutdown(context.Background(), b); err != nil {
+	return err
+}
+```
+
+Fabrik is deliberately process-local: it does not deliver between processes or
+provide a broker, persistence, or network transport. It only delivers values
+through channels; it does not execute handlers or define acknowledgement,
+retry, or application-level ordering semantics.
 
 ## Tests
 
