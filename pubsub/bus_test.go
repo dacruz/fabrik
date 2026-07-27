@@ -55,16 +55,14 @@ func TestBus_ItShouldSupportConcurrentRegistration(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make(chan error, workers)
 	for i := range workers {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
+		wg.Go(func() {
 			if i%2 == 0 {
 				_, err := Subscribe(b, NewTopic[orderCreated]("orders"))
 				errs <- err
 				return
 			}
 			errs <- Publish(b, NewTopic[orderCreated]("orders"), orderCreated{})
-		}(i)
+		})
 	}
 	wg.Wait()
 	close(errs)

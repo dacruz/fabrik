@@ -51,11 +51,9 @@ func TestSubscription_ItShouldAllowIdempotentConcurrentUnsubscribe(t *testing.T)
 	const workers = 100
 	var wg sync.WaitGroup
 	for range workers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sub.Unsubscribe()
-		}()
+		})
 	}
 	wg.Wait()
 	sub.Unsubscribe()

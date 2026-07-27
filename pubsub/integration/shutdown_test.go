@@ -41,13 +41,11 @@ func TestWorkflowShutdownClosesActivePublishersAndDrainsConsumers(t *testing.T) 
 	firstPublish := make(chan struct{}, 1)
 	stop := make(chan struct{})
 	var publishers sync.WaitGroup
-	for publisher := 0; publisher < 4; publisher++ {
-		publishers.Add(1)
-		go func(id int) {
-			defer publishers.Done()
+	for publisher := range 4 {
+		publishers.Go(func() {
 			<-start
-			for value := 0; value < 1000; value++ {
-				if err := pubsub.Publish(b, activeTopic, id*1000+value); err != nil && !errors.Is(err, pubsub.ErrBusClosed) {
+			for value := range 1000 {
+				if err := pubsub.Publish(b, activeTopic, publisher*1000+value); err != nil && !errors.Is(err, pubsub.ErrBusClosed) {
 					t.Errorf("publish during shutdown: %v", err)
 				}
 				select {
@@ -60,7 +58,7 @@ func TestWorkflowShutdownClosesActivePublishersAndDrainsConsumers(t *testing.T) 
 				default:
 				}
 			}
-		}(publisher)
+		})
 	}
 	close(start)
 	<-firstPublish

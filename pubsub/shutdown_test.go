@@ -17,7 +17,8 @@ func TestShutdown_ItShouldPreserveQueuedValuesBeforeClosingSubscriptions(t *test
 	sub, err := Subscribe(b, topic)
 	require.NoError(t, err)
 
-	for value := 1; value <= 3; value++ {
+	for value := range 3 {
+		value++
 		require.NoError(t, Publish(b, topic, value))
 	}
 	require.NoError(t, Shutdown(context.Background(), b))
@@ -186,9 +187,7 @@ func TestShutdown_ItShouldExcludeSendsAndRegistrationsDuringConcurrentTeardown(t
 	var wg sync.WaitGroup
 
 	for publisher := range publishers {
-		wg.Add(1)
-		go func(publisher int) {
-			defer wg.Done()
+		wg.Go(func() {
 			<-start
 			for value := range publishesPerWorker {
 				err := Publish(b, topic, publisher*publishesPerWorker+value)
@@ -196,7 +195,7 @@ func TestShutdown_ItShouldExcludeSendsAndRegistrationsDuringConcurrentTeardown(t
 					operationErrors <- err
 				}
 			}
-		}(publisher)
+		})
 	}
 	for range subscriptionWorkers {
 		wg.Go(func() {

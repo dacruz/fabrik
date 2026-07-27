@@ -21,7 +21,8 @@ func TestPublish_ItShouldFanOutToEverySubscriber(t *testing.T) {
 	defer first.Unsubscribe()
 	defer second.Unsubscribe()
 
-	for value := 1; value <= 3; value++ {
+	for value := range 3 {
+		value++
 		require.NoError(t, Publish(b, topic, value))
 	}
 
@@ -76,7 +77,7 @@ func TestPublish_ItShouldNotBlockOnASlowSubscriber(t *testing.T) {
 	require.NoError(t, err)
 	defer slow.Unsubscribe()
 
-	for value := 0; value < cap(slow.Events); value++ {
+	for value := range cap(slow.Events) {
 		require.NoError(t, Publish(b, topic, value))
 	}
 	fast, err := Subscribe(b, topic)
@@ -148,7 +149,7 @@ func TestPublish_ItShouldContinueFanoutAfterDroppingOneDelivery(t *testing.T) {
 	defer full.Unsubscribe()
 	defer available.Unsubscribe()
 
-	for value := 0; value < cap(full.Events); value++ {
+	for value := range cap(full.Events) {
 		full.events <- value
 	}
 	err = Publish(b, topic, 100)
@@ -169,7 +170,7 @@ func TestPublish_ItShouldNotBlockWhenSubscriberIsFull(t *testing.T) {
 	sub, err := Subscribe(b, topic)
 	require.NoError(t, err)
 	defer sub.Unsubscribe()
-	for value := 0; value < cap(sub.Events); value++ {
+	for value := range cap(sub.Events) {
 		require.NoError(t, Publish(b, topic, value))
 	}
 
@@ -198,13 +199,11 @@ func TestPublish_ItShouldPreserveOneTopicOrderForConcurrentPublishers(t *testing
 	const valuesPerPublisher = 10
 	var wg sync.WaitGroup
 	for publisher := range publishers {
-		wg.Add(1)
-		go func(publisher int) {
-			defer wg.Done()
+		wg.Go(func() {
 			for value := range valuesPerPublisher {
 				assert.NoError(t, Publish(b, topic, publisher*valuesPerPublisher+value))
 			}
-		}(publisher)
+		})
 	}
 	wg.Wait()
 

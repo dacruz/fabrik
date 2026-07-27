@@ -15,7 +15,7 @@ func TestWorkflowBackpressureDoesNotStarveHealthyConsumer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for value := 0; value < cap(slow.Events); value++ {
+	for value := range cap(slow.Events) {
 		if err := pubsub.Publish(b, topic, value); err != nil {
 			t.Fatal(err)
 		}
@@ -46,13 +46,11 @@ func TestWorkflowConcurrentUnsubscribeDuringPublishing(t *testing.T) {
 	firstPublish := make(chan struct{}, 1)
 	stop := make(chan struct{})
 	var publishers sync.WaitGroup
-	for publisher := 0; publisher < 8; publisher++ {
-		publishers.Add(1)
-		go func(id int) {
-			defer publishers.Done()
+	for publisher := range 8 {
+		publishers.Go(func() {
 			<-start
-			for value := 0; value < 1000; value++ {
-				if err := pubsub.Publish(b, topic, id*1000+value); err != nil && !errors.Is(err, pubsub.ErrDelivery) {
+			for value := range 1000 {
+				if err := pubsub.Publish(b, topic, publisher*1000+value); err != nil && !errors.Is(err, pubsub.ErrDelivery) {
 					t.Errorf("publish: %v", err)
 				}
 				select {
@@ -65,7 +63,7 @@ func TestWorkflowConcurrentUnsubscribeDuringPublishing(t *testing.T) {
 				default:
 				}
 			}
-		}(publisher)
+		})
 	}
 	close(start)
 	<-firstPublish
@@ -81,12 +79,10 @@ func TestWorkflowRepeatedSubscribeUnsubscribeAcrossTopics(t *testing.T) {
 	topics := []pubsub.Topic[int]{pubsub.NewTopic[int]("topic-0"), pubsub.NewTopic[int]("topic-1"), pubsub.NewTopic[int]("topic-2"), pubsub.NewTopic[int]("topic-3")}
 	start := make(chan struct{})
 	var workers sync.WaitGroup
-	for worker := 0; worker < 12; worker++ {
-		workers.Add(1)
-		go func(worker int) {
-			defer workers.Done()
+	for worker := range 12 {
+		workers.Go(func() {
 			<-start
-			for iteration := 0; iteration < 50; iteration++ {
+			for iteration := range 50 {
 				topic := topics[(worker+iteration)%len(topics)]
 				sub, err := pubsub.Subscribe(b, topic)
 				if err != nil {
@@ -120,7 +116,7 @@ func TestWorkflowRepeatedSubscribeUnsubscribeAcrossTopics(t *testing.T) {
 				default:
 				}
 			}
-		}(worker)
+		})
 	}
 	close(start)
 	workers.Wait()
