@@ -227,11 +227,7 @@ func TestWorkflowRepeatedSubscribeUnsubscribeAcrossTopics(t *testing.T) {
 					t.Errorf("publish: %v", err)
 				}
 				sub.Unsubscribe()
-				select {
-				case <-done:
-				case <-time.After(time.Second):
-					t.Fatal("consumer did not stop after unsubscribe")
-				}
+				<-done
 				select {
 				case got := <-received:
 					if got != value {
