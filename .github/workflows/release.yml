@@ -34,11 +34,7 @@ jobs:
           cache: true
 
       - name: Verify release
-        run: |
-          go mod download
-          go build ./...
-          go test ./...
-          go vet ./...
+        run: make verify
 
       - name: Create GitHub release
         env:

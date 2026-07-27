@@ -28,20 +28,5 @@ jobs:
           go-version: ${{ matrix.go-version }}
           cache: true
 
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Build
-        run: go build ./...
-
-      - name: Test
-        run: go test ./...
-
-      - name: Test with race detector
-        run: go test -race ./...
-
-      - name: Test with coverage
-        run: go test -cover ./...
-
-      - name: Vet
-        run: go vet ./...
+      - name: Run CI checks
+        run: make ci
