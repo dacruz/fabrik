@@ -2,6 +2,7 @@ package pubsub
 
 import (
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -216,6 +217,52 @@ func TestPublish_ItShouldPreserveOneTopicOrderForConcurrentPublishers(t *testing
 	}
 	assert.Len(t, seen, publishers*valuesPerPublisher)
 	assert.Equal(t, values, secondValues)
+}
+
+func TestPublish_ItShouldHandleNilBus(t *testing.T) {
+	err := Publish[int](nil, NewTopic[int]("orders"), 1)
+
+	assert.ErrorIs(t, err, ErrNilBus)
+}
+
+func TestPublish_ItShouldReportAllDroppedDeliveries(t *testing.T) {
+	b := NewBus()
+	topic := NewTopic[int]("orders")
+	first, err := Subscribe(b, topic)
+	require.NoError(t, err)
+	second, err := Subscribe(b, topic)
+	require.NoError(t, err)
+	available, err := Subscribe(b, topic)
+	require.NoError(t, err)
+	defer first.Unsubscribe()
+	defer second.Unsubscribe()
+	defer available.Unsubscribe()
+
+	for range subscriptionBufferSize {
+		first.events <- 1
+		second.events <- 1
+	}
+	err = Publish(b, topic, 2)
+
+	assert.ErrorIs(t, err, ErrDelivery)
+	delivery := &DeliveryError{}
+	require.ErrorAs(t, err, &delivery)
+	assert.Equal(t, 2, delivery.Dropped)
+	assert.Equal(t, 2, <-available.Events)
+}
+
+func TestPublish_ItShouldReportTopicTypeConflicts(t *testing.T) {
+	b := NewBus()
+	topicName := "orders"
+	require.NoError(t, Publish(b, NewTopic[int](topicName), 1))
+
+	err := Publish(b, NewTopic[string](topicName), "one")
+	assert.ErrorIs(t, err, ErrTopicTypeConflict)
+	conflict := &TopicTypeConflictError{}
+	require.ErrorAs(t, err, &conflict)
+	assert.Equal(t, topicName, conflict.Topic)
+	assert.Equal(t, reflect.TypeFor[int](), conflict.ExistingType)
+	assert.Equal(t, reflect.TypeFor[string](), conflict.RequestedType)
 }
 
 func receiveInts(t *testing.T, sub *Subscription[int], count int) []int {

@@ -1,6 +1,7 @@
 package pubsub
 
 import (
+	"context"
 	"reflect"
 	"sync"
 	"testing"
@@ -70,4 +71,20 @@ func TestBus_ItShouldSupportConcurrentRegistration(t *testing.T) {
 	for err := range errs {
 		assert.NoError(t, err, "compatible concurrent registration should succeed")
 	}
+}
+
+func TestBus_ItShouldHandleNilBusDuringShutdown(t *testing.T) {
+	assert.ErrorIs(t, Shutdown(context.Background(), nil), ErrNilBus)
+}
+
+func TestBus_ItShouldFormatPublicErrors(t *testing.T) {
+	conflict := &TopicTypeConflictError{
+		Topic:         "orders",
+		ExistingType:  reflect.TypeFor[int](),
+		RequestedType: reflect.TypeFor[string](),
+	}
+	delivery := &DeliveryError{Topic: "orders", Dropped: 2}
+
+	assert.Equal(t, `pubsub: topic "orders" is registered for int, cannot use string`, conflict.Error())
+	assert.Equal(t, `pubsub: dropped 2 delivery(s) for topic "orders"`, delivery.Error())
 }

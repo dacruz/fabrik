@@ -137,3 +137,16 @@ func TestSubscription_ItShouldKeepTheTopicRegisteredAfterRemovingTheLastSubscrib
 	assert.NotNil(t, second)
 	second.Unsubscribe()
 }
+
+func TestSubscription_ItShouldHandleNilBus(t *testing.T) {
+	sub, err := Subscribe[int](nil, NewTopic[int]("orders"))
+
+	assert.Nil(t, sub)
+	assert.ErrorIs(t, err, ErrNilBus)
+}
+
+func TestSubscription_ItShouldAllowNilUnsubscribe(t *testing.T) {
+	var sub *Subscription[int]
+
+	assert.NotPanics(t, sub.Unsubscribe)
+}

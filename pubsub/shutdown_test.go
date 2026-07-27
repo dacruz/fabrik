@@ -87,6 +87,34 @@ func TestShutdown_ItShouldHonorCancellationBeforeStarting(t *testing.T) {
 	assert.NoError(t, Shutdown(context.Background(), b))
 }
 
+func TestShutdown_ItShouldUseBackgroundContextWhenContextIsNil(t *testing.T) {
+	b := NewBus()
+
+	assert.NoError(t, Shutdown(nil, b))
+	assert.ErrorIs(t, Publish(b, NewTopic[int]("orders"), 1), ErrBusClosed)
+}
+
+func TestShutdown_ItShouldHonorCancellationWhileWaitingForTheBusLock(t *testing.T) {
+	b := NewBus()
+	b.mu.Lock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Shutdown(ctx, b) }()
+
+	time.Sleep(5 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-done:
+		assert.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("shutdown did not honor cancellation while waiting for the bus lock")
+	}
+	b.mu.Unlock()
+	assert.NoError(t, Shutdown(context.Background(), b))
+}
+
 func TestShutdown_ItShouldHonorCancellationWhileWaitingForAnotherShutdown(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
