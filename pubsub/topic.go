@@ -20,12 +20,17 @@ func (t Topic[T]) Name() string { return t.name }
 // Type returns the event type represented by the topic.
 func (t Topic[T]) Type() reflect.Type { return t.typ }
 
-// Publish registers topic on b. Delivery behavior is intentionally deferred
-// to Plan 003.
-func Publish[T any](b *Bus, topic Topic[T], _ T) error {
+// Publish sends value to every current subscriber of topic without blocking.
+// Values sent to a full subscriber channel are dropped; delivery errors for
+// those drops are added in Plan 004.
+func Publish[T any](b *Bus, topic Topic[T], value T) error {
 	if b == nil {
 		return ErrNilBus
 	}
-	_, err := b.register(topic.name, topic.typ)
-	return err
+	state, err := b.register(topic.name, topic.typ)
+	if err != nil {
+		return err
+	}
+	state.publish(value)
+	return nil
 }

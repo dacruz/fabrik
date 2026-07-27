@@ -12,15 +12,13 @@ delivered when they are queued for a subscriber.
 
 ## Implementation status
 
-Plans 001 and 002 are implemented. The current package supports creating a
+Plans 001 through 003 are implemented. The current package supports creating a
 bus and typed topics, lazy type-safe topic registration, buffered subscriptions,
-and idempotent, concurrency-safe unsubscription. Queued values remain
-readable before an unsubscribed channel closes.
+idempotent, concurrency-safe unsubscription, and non-blocking per-topic
+fan-out with ordering.
 
-`Publish` currently only registers and validates a topic; it does not deliver
-messages yet. Publishing and ordering are implemented in plan 003, delivery
-errors in plan 004, shutdown in plan 005, and integration hardening in plan
-006.
+Delivery errors are implemented in plan 004, shutdown in plan 005, and
+integration hardening in plan 006.
 
 ## Project structure
 

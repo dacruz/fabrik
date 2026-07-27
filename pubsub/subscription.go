@@ -34,6 +34,14 @@ func Subscribe[T any](b *Bus, topic Topic[T]) (*Subscription[T], error) {
 		topic:  state,
 	}
 	subscription.id = state.addSubscriber(subscriber{
+		send: func(value any) bool {
+			select {
+			case events <- value.(T):
+				return true
+			default:
+				return false
+			}
+		},
 		close: func() { close(events) },
 	})
 	return subscription, nil

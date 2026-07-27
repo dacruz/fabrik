@@ -8,6 +8,7 @@ import (
 type reflectType = reflect.Type
 
 type subscriber struct {
+	send  func(any) bool
 	close func()
 }
 
@@ -41,6 +42,18 @@ func (s *topicState) removeSubscriber(id uint64) {
 	}
 	delete(s.subscribers, id)
 	subscriber.close()
+}
+
+// publish delivers value to every subscriber that was registered when the
+// topic lock was acquired. The non-blocking send keeps a slow subscriber from
+// delaying other subscribers or publishers on unrelated topics.
+func (s *topicState) publish(value any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, subscriber := range s.subscribers {
+		subscriber.send(value)
+	}
 }
 
 func (s *topicState) validate(requested reflect.Type, name string) error {
