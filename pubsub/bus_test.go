@@ -34,13 +34,11 @@ func TestBus_ItShouldReportInspectableTopicTypeConflicts(t *testing.T) {
 	assert.NoError(t, Publish(b, NewTopic[orderCreated](name), orderCreated{}))
 	_, err := Subscribe(b, NewTopic[orderCancelled](name))
 	assert.ErrorIs(t, err, ErrTopicTypeConflict)
-	var conflict *TopicTypeConflictError
-	if !assert.ErrorAs(t, err, &conflict) {
-		return
-	}
+	conflict := &TopicTypeConflictError{}
+	assert.ErrorAs(t, err, &conflict)
 	assert.Equal(t, name, conflict.Topic)
-	assert.Equal(t, reflect.TypeOf(orderCreated{}), conflict.ExistingType)
-	assert.Equal(t, reflect.TypeOf(orderCancelled{}), conflict.RequestedType)
+	assert.Equal(t, reflect.TypeFor[orderCreated](), conflict.ExistingType)
+	assert.Equal(t, reflect.TypeFor[orderCancelled](), conflict.RequestedType)
 }
 
 func TestBus_ItShouldTreatEmptyTopicNamesAsOpaque(t *testing.T) {
@@ -55,7 +53,7 @@ func TestBus_ItShouldSupportConcurrentRegistration(t *testing.T) {
 	const workers = 100
 	var wg sync.WaitGroup
 	errs := make(chan error, workers)
-	for i := 0; i < workers; i++ {
+	for i := range workers {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
