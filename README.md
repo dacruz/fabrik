@@ -7,8 +7,6 @@
 [![Coverage](https://img.shields.io/github/actions/workflow/status/dacruz/fabrik/ci.yml?branch=main&label=coverage)](https://github.com/dacruz/fabrik/actions/workflows/ci.yml)
 [![Vet](https://img.shields.io/github/actions/workflow/status/dacruz/fabrik/ci.yml?branch=main&label=vet)](https://github.com/dacruz/fabrik/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/actions/workflow/status/dacruz/fabrik/release.yml?label=release)](https://github.com/dacruz/fabrik/actions/workflows/release.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/dacruz/fabrik.svg)](https://pkg.go.dev/github.com/dacruz/fabrik)
-[![Go Report Card](https://goreportcard.com/badge/github.com/dacruz/fabrik)](https://goreportcard.com/report/github.com/dacruz/fabrik)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
 
 Fabrik is a lightweight, typed, process-local Pub/Sub bus for decoupled
