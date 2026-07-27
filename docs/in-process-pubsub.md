@@ -12,12 +12,13 @@ delivered when they are queued for a subscriber.
 
 ## Implementation status
 
-Plans 001 through 004 are implemented. The current package supports creating a
+Plans 001 through 005 are implemented. The current package supports creating a
 bus and typed topics, lazy type-safe topic registration, buffered subscriptions,
 idempotent, concurrency-safe unsubscription, non-blocking per-topic fan-out
-with ordering, and bounded delivery errors for dropped subscriber deliveries.
+with ordering, bounded delivery errors for dropped subscriber deliveries, and
+graceful bus shutdown with buffered draining.
 
-Shutdown is planned in plan 005, and integration hardening is planned in plan 006.
+Integration hardening is planned in plan 006.
 
 ## Project structure
 
@@ -56,15 +57,13 @@ fabrik/
 
 File responsibilities:
 
-- `bus.go` — `Bus`, construction, and topic registry. Lifecycle and shutdown
-  are planned for later releases.
+- `bus.go` — `Bus`, construction, topic registry, lifecycle, and shutdown.
 - `topic.go` — generic `Topic[T]`, topic creation, type validation, and
   publishing.
 - `subscription.go` — generic `Subscription[T]`, subscribe, and unsubscribe.
 - `state.go` — internal topic state, subscriber bookkeeping, and
   synchronization.
-- `errors.go` — topic-type, nil-bus, and delivery errors today; shutdown errors
-  are planned for a later release.
+- `errors.go` — topic-type, nil-bus, delivery, and shutdown errors.
 
 Tests are grouped by observable behavior rather than implementation details.
 The package should expose the public API as `fabrik/pubsub`; implementation
@@ -81,9 +80,8 @@ implementation details.
 ## Bus
 
 `Bus` is the central, process-local PubSub object. It is safe to share between
-multiple goroutines and currently owns the topic registry, subscriptions, and
-publishing. Shutdown is part of the target design and is implemented in a
-later plan.
+multiple goroutines and owns the topic registry, subscriptions, publishing,
+and lifecycle state.
 
 Conceptually, it contains global state plus independent state for each topic:
 
@@ -236,7 +234,10 @@ Shutdown is graceful from the bus's perspective:
 the context expires. It does not imply that arbitrary consumer work has
 finished; waiting for application handlers to process events requires an
 application-level `WaitGroup`, acknowledgement mechanism, or handler-based
-subscription API.
+subscription API. A canceled context prevents a new shutdown from starting or
+stops a caller waiting for another shutdown; once a caller crosses the shutdown
+boundary, that teardown completes before it returns. Repeated calls after
+completion return the first shutdown result (normally `nil`).
 
 ## Testing requirements
 

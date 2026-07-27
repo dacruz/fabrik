@@ -44,6 +44,23 @@ func (s *topicState) removeSubscriber(id uint64) {
 	subscriber.close()
 }
 
+// closeSubscribers removes every subscriber while holding the topic lock,
+// excluding all sends. Channels are closed after the registrations have been
+// detached, so a concurrent Unsubscribe observes the missing registration and
+// cannot close a channel a second time.
+func (s *topicState) closeSubscribers() {
+	s.mu.Lock()
+	subscribers := make([]subscriber, 0, len(s.subscribers))
+	for id, subscriber := range s.subscribers {
+		delete(s.subscribers, id)
+		subscribers = append(subscribers, subscriber)
+	}
+	for _, subscriber := range subscribers {
+		subscriber.close()
+	}
+	s.mu.Unlock()
+}
+
 // publish delivers value to every subscriber that was registered when the
 // topic lock was acquired. The non-blocking send keeps a slow subscriber from
 // delaying other subscribers or publishers on unrelated topics.

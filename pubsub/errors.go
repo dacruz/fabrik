@@ -13,9 +13,8 @@ var ErrTopicTypeConflict = errors.New("pubsub topic type conflict")
 // ErrNilBus is returned when an operation is attempted on a nil bus.
 var ErrNilBus = errors.New("pubsub: nil bus")
 
-// ErrBusClosed is returned when an operation is attempted after shutdown.
-// Shutdown is implemented in Plan 005; the sentinel is defined here so the
-// publish API has a stable lifecycle error identity.
+// ErrBusClosed is returned when an operation is attempted after shutdown
+// begins. Use errors.Is to inspect this lifecycle error.
 var ErrBusClosed = errors.New("pubsub: bus is shut down")
 
 // ErrDelivery identifies a publish where one or more subscriber deliveries

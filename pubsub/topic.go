@@ -27,13 +27,11 @@ func Publish[T any](b *Bus, topic Topic[T], value T) error {
 	if b == nil {
 		return ErrNilBus
 	}
-	state, err := b.register(topic.name, topic.typ)
-	if err != nil {
-		return err
-	}
-	dropped := state.publish(value)
-	if dropped > 0 {
-		return &DeliveryError{Topic: topic.name, Dropped: dropped}
-	}
-	return nil
+	return b.withTopic(topic.name, topic.typ, func(state *topicState) error {
+		dropped := state.publish(value)
+		if dropped > 0 {
+			return &DeliveryError{Topic: topic.name, Dropped: dropped}
+		}
+		return nil
+	})
 }
