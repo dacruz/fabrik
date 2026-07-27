@@ -1,12 +1,63 @@
 # fabrik
-Fabrik is a lightweight, typed, process-local Pub/Sub bus for decoupled communication between producers and consumers in long-lived Go processes.
+
+[![CI](https://github.com/dacruz/fabrik/actions/workflows/ci.yml/badge.svg)](https://github.com/dacruz/fabrik/actions/workflows/ci.yml)
+[![Build](https://img.shields.io/github/actions/workflow/status/dacruz/fabrik/ci.yml?branch=main&label=build)](https://github.com/dacruz/fabrik/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/github/actions/workflow/status/dacruz/fabrik/ci.yml?branch=main&label=tests)](https://github.com/dacruz/fabrik/actions/workflows/ci.yml)
+[![Race detector](https://img.shields.io/github/actions/workflow/status/dacruz/fabrik/ci.yml?branch=main&label=race%20detector)](https://github.com/dacruz/fabrik/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/github/actions/workflow/status/dacruz/fabrik/ci.yml?branch=main&label=coverage)](https://github.com/dacruz/fabrik/actions/workflows/ci.yml)
+[![Vet](https://img.shields.io/github/actions/workflow/status/dacruz/fabrik/ci.yml?branch=main&label=vet)](https://github.com/dacruz/fabrik/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/actions/workflow/status/dacruz/fabrik/release.yml?label=release)](https://github.com/dacruz/fabrik/actions/workflows/release.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/dacruz/fabrik.svg)](https://pkg.go.dev/github.com/dacruz/fabrik)
+[![Go Report Card](https://goreportcard.com/badge/github.com/dacruz/fabrik)](https://goreportcard.com/report/github.com/dacruz/fabrik)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
+
+Fabrik is a lightweight, typed, process-local Pub/Sub bus for decoupled
+communication between producers and consumers in long-lived Go processes.
+
+## Features
+
+- Generic, type-safe topics with exact, opaque names.
+- Lazy topic registration with one event type per name on each bus.
+- Fan-out delivery to every current subscriber.
+- Non-blocking publishes with independent buffered queues per subscriber.
+- Bounded backpressure reporting through inspectable `DeliveryError` values.
+- Idempotent, concurrency-safe unsubscription.
+- Graceful, idempotent shutdown that preserves queued events for consumers to drain.
+
+Fabrik is process-local: it does not provide a broker, persistence, replay,
+network transport, or cross-process delivery. It delivers values through
+channels; applications define their own handlers, acknowledgements, retries,
+and higher-level ordering semantics.
+
+## Requirements
+
+- Go 1.26 or newer
+
+## Installation
+
+```sh
+go get github.com/dacruz/fabrik
+```
 
 ## Usage
 
-Construct a bus and a typed topic. Creating a topic does not register it;
-registration is lazy and happens on the first `Subscribe` or `Publish`.
+The public API is in the `pubsub` package. Construct a bus and a typed topic.
+Creating a topic does not register it; registration is lazy and happens on the
+first `Subscribe` or `Publish`.
 
 ```go
+import (
+	"context"
+	"errors"
+	"log"
+
+	"github.com/dacruz/fabrik/pubsub"
+)
+
+type OrderCreated struct {
+	ID string
+}
+
 b := pubsub.NewBus()
 orders := pubsub.NewTopic[OrderCreated]("orders.created")
 ```
@@ -49,7 +100,8 @@ Subscription channels have a capacity of 100 values. If a subscriber is full,
 that delivery is dropped, publishing continues for subscribers with capacity,
 and the publish returns a `DeliveryError`. The error is inspectable with
 `errors.Is(err, pubsub.ErrDelivery)` or `errors.As` to read `Topic` and
-`Dropped`.
+`Dropped`. Publishing to a topic with no subscribers succeeds and drops the
+value.
 
 Unsubscribe is safe to call repeatedly or concurrently. It removes the
 subscriber and closes its channel; already queued values can still be read
@@ -76,16 +128,22 @@ provide a broker, persistence, or network transport. It only delivers values
 through channels; it does not execute handlers or define acknowledgement,
 retry, or application-level ordering semantics.
 
-## Tests
+## Development
 
-Run the regular test suite:
+Run the same checks used by GitHub Actions:
 
 ```sh
 make test
-```
-
-Run the test suite with the Go race detector:
-
-```sh
 make test-race
+go test -cover ./...
+go build ./...
+go vet ./...
 ```
+
+The CI workflow runs on every branch push and pull request. Version tags are
+published as GitHub releases only when they point to a commit reachable from
+`main`; see [the release plan](docs/plans/008-github-ci-and-release.md).
+
+## License
+
+Fabrik is available under the [BSD-3-Clause license](LICENSE).
