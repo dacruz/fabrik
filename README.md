@@ -130,19 +130,20 @@ retry, or application-level ordering semantics.
 
 ## Development
 
-Run the same checks used by GitHub Actions:
+The Makefile provides the following development commands:
 
 ```sh
-make test
-make test-race
-go test -cover ./...
-go build ./...
-go vet ./...
+make deps        # Download Go dependencies
+make build       # Build all packages
+make test        # Run tests
+make test-race   # Run tests with the race detector
+make test-cover  # Run tests with coverage
+make vet         # Run go vet
 ```
 
-The CI workflow runs on every branch push and pull request. Version tags are
-published as GitHub releases only when they point to a commit reachable from
-`main`; see [the release plan](docs/plans/008-github-ci-and-release.md).
+`make ci` runs the full CI sequence: dependency download, build, tests,
+race-detector tests, coverage tests, and vet. `make verify` runs the release
+verification sequence: dependency download, build, tests, and vet.
 
 ## License
 
