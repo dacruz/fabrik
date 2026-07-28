@@ -12,9 +12,9 @@ type producer[T any] struct {
 	topic pubsub.Topic[T]
 }
 
-// NewProducerClient binds a producer to topicName on b.
-func NewProducerClient[T any](b *pubsub.Bus, topicName string) ProducerClient[T] {
-	return &producer[T]{bus: b, topic: pubsub.NewTopic[T](topicName)}
+// NewProducerClient binds a producer to topic on b.
+func NewProducerClient[T any](b *pubsub.Bus, topic pubsub.Topic[T]) ProducerClient[T] {
+	return &producer[T]{bus: b, topic: topic}
 }
 
 func (p *producer[T]) Publish(value T) error {

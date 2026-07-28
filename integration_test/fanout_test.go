@@ -11,30 +11,32 @@ import (
 
 func TestWorkflowFanOutAndTopicIsolation(t *testing.T) {
 	b := pubsub.NewBus()
-	first, err := client.NewConsumerClient[int](b, "orders")
+	orders := pubsub.NewTopic[int]("orders")
+	archive := pubsub.NewTopic[int]("orders/archive")
+	first, err := client.NewConsumerClient(b, orders)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := client.NewConsumerClient[int](b, "orders")
+	second, err := client.NewConsumerClient(b, orders)
 	if err != nil {
 		t.Fatal(err)
 	}
-	archiveSub, err := client.NewConsumerClient[int](b, "orders/archive")
+	archiveSub, err := client.NewConsumerClient(b, archive)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer first.Close()
 	defer second.Close()
 	defer archiveSub.Close()
-	orders := client.NewProducerClient[int](b, "orders")
-	archive := client.NewProducerClient[int](b, "orders/archive")
+	ordersProducer := client.NewProducerClient(b, orders)
+	archiveProducer := client.NewProducerClient(b, archive)
 
 	for _, value := range []int{1, 2, 3} {
-		if err := orders.Publish(value); err != nil {
+		if err := ordersProducer.Publish(value); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := archive.Publish(99); err != nil {
+	if err := archiveProducer.Publish(99); err != nil {
 		t.Fatal(err)
 	}
 

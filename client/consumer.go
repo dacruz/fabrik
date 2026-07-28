@@ -23,11 +23,11 @@ type consumer[T any] struct {
 	sub *pubsub.Subscription[T]
 }
 
-// NewConsumerClient subscribes to topicName on b and owns the resulting
+// NewConsumerClient subscribes to topic on b and owns the resulting
 // subscription. It returns underlying pubsub errors, including nil-bus and
 // topic-type-conflict errors.
-func NewConsumerClient[T any](b *pubsub.Bus, topicName string) (ConsumerClient[T], error) {
-	sub, err := pubsub.Subscribe(b, pubsub.NewTopic[T](topicName))
+func NewConsumerClient[T any](b *pubsub.Bus, topic pubsub.Topic[T]) (ConsumerClient[T], error) {
+	sub, err := pubsub.Subscribe(b, topic)
 	if err != nil {
 		return nil, err
 	}

@@ -13,8 +13,10 @@ func Example() {
 	type OrderArchived struct{ ID string }
 
 	b := pubsub.NewBus()
-	producer := client.NewProducerClient[OrderCreated](b, "orders.created")
-	consumer, err := client.NewConsumerClient[OrderArchived](b, "orders.archived")
+	created := pubsub.NewTopic[OrderCreated]("orders.created")
+	archived := pubsub.NewTopic[OrderArchived]("orders.archived")
+	producer := client.NewProducerClient(b, created)
+	consumer, err := client.NewConsumerClient(b, archived)
 	if err != nil {
 		log.Fatal(err)
 	}

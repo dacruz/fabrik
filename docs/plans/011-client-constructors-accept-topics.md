@@ -1,6 +1,6 @@
 # Plan 011: Client constructors accept typed topics
 
-**Status:** Planned
+**Status:** Completed
 
 ## Feature
 
@@ -36,35 +36,35 @@ Plan 010: Top-level client package.
 
 ## Implementation
 
-- [ ] Change `NewProducerClient` to accept `pubsub.Topic[T]` rather than a
+- [x] Change `NewProducerClient` to accept `pubsub.Topic[T]` rather than a
   topic-name string.
-- [ ] Change `NewConsumerClient` to accept `pubsub.Topic[T]` rather than a
+- [x] Change `NewConsumerClient` to accept `pubsub.Topic[T]` rather than a
   topic-name string.
-- [ ] Store the supplied typed topic directly in each client; do not recreate
+- [x] Store the supplied typed topic directly in each client; do not recreate
   a topic from its name inside the client package.
-- [ ] Preserve the existing producer and consumer interfaces and method
+- [x] Preserve the existing producer and consumer interfaces and method
   behavior.
-- [ ] Preserve nil-bus handling, topic registration, topic-type conflicts,
+- [x] Preserve nil-bus handling, topic registration, topic-type conflicts,
   `DeliveryError`, and `ErrBusClosed` behavior.
-- [ ] Update all client tests, examples, integration tests, and README usage
+- [x] Update all client tests, examples, integration tests, and README usage
   to construct `pubsub.Topic[T]` values explicitly.
-- [ ] Document that a topic's type and exact name are declared with
+- [x] Document that a topic's type and exact name are declared with
   `pubsub.NewTopic` and then passed to the appropriate client constructor.
-- [ ] Keep client code dependent on `pubsub` without introducing an import
+- [x] Keep client code dependent on `pubsub` without introducing an import
   cycle.
 
 ## Tests
 
-- [ ] Verify producer and consumer clients bind to the supplied typed topic.
-- [ ] Verify a client cannot accidentally use a different event type for the
+- [x] Verify producer and consumer clients bind to the supplied typed topic.
+- [x] Verify a client cannot accidentally use a different event type for the
   same topic name through the typed constructor API.
-- [ ] Verify topic isolation when multiple typed topics are passed to clients.
-- [ ] Verify producer publishing, consumer ordering, cancellation, handler
+- [x] Verify topic isolation when multiple typed topics are passed to clients.
+- [x] Verify producer publishing, consumer ordering, cancellation, handler
   errors, repeated close, buffered draining, and shutdown behavior.
-- [ ] Search for and remove all stale constructor calls that pass topic-name
+- [x] Search for and remove all stale constructor calls that pass topic-name
   strings.
-- [ ] Run `go test ./...`, `go test -race ./...`, and `go vet ./...`.
-- [ ] Run repeated race-detector stress tests for client workflows.
+- [x] Run `go test ./...`, `go test -race ./...`, and `go vet ./...`.
+- [x] Run repeated race-detector stress tests for client workflows.
 
 ## Completion criteria
 

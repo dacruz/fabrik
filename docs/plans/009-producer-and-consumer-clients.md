@@ -31,11 +31,11 @@ type ConsumerClient[T any] interface {
 type Handler[T any] func(context.Context, T) error
 ```
 
-Constructors bind the bus and exact topic name:
+Constructors bind the bus and an existing typed topic:
 
 ```go
-func NewProducerClient[T any](b *pubsub.Bus, topicName string) ProducerClient[T]
-func NewConsumerClient[T any](b *pubsub.Bus, topicName string) (ConsumerClient[T], error)
+func NewProducerClient[T any](b *pubsub.Bus, topic pubsub.Topic[T]) ProducerClient[T]
+func NewConsumerClient[T any](b *pubsub.Bus, topic pubsub.Topic[T]) (ConsumerClient[T], error)
 ```
 
 `ProducerClient` wraps `pubsub.Publish`. Publishing remains non-blocking and
@@ -48,10 +48,8 @@ bus closes the subscription, or the handler returns an error. `Close` is
 idempotent and releases the subscription. A consumer has one active `Run`
 loop at a time; concurrent `Run` calls are unsupported.
 
-The constructors should not expose `pubsub.Topic[T]` to callers. This keeps
-topic names and event types together at the client boundary and makes it
-impossible for a caller to accidentally publish or consume through the wrong
-role-specific topic.
+Callers declare topic names and event types together with `pubsub.NewTopic`
+and pass the resulting typed topic to the appropriate client constructor.
 
 ## Implementation
 

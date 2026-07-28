@@ -12,13 +12,14 @@ import (
 
 func TestProducerPublishesToBoundTopicAndPreservesErrors(t *testing.T) {
 	b := pubsub.NewBus()
-	consumer, err := NewConsumerClient[int](b, "orders")
+	orders := pubsub.NewTopic[int]("orders")
+	consumer, err := NewConsumerClient(b, orders)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer consumer.Close()
 
-	producer := NewProducerClient[int](b, "orders")
+	producer := NewProducerClient(b, orders)
 	if err := producer.Publish(7); err != nil {
 		t.Fatal(err)
 	}
@@ -41,22 +42,51 @@ func TestProducerPublishesToBoundTopicAndPreservesErrors(t *testing.T) {
 	if err := producer.Publish(8); !errors.Is(err, pubsub.ErrBusClosed) {
 		t.Fatalf("got %v", err)
 	}
-	if err := NewProducerClient[int](nil, "orders").Publish(1); !errors.Is(err, pubsub.ErrNilBus) {
+	if err := NewProducerClient(nil, orders).Publish(1); !errors.Is(err, pubsub.ErrNilBus) {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestClientsBindToSuppliedTypedTopic(t *testing.T) {
+	b := pubsub.NewBus()
+	topic := pubsub.NewTopic[int]("supplied")
+	consumer, err := NewConsumerClient(b, topic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+
+	producer := NewProducerClient(b, topic)
+	if err := producer.Publish(42); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := consumer.Run(ctx, func(_ context.Context, value int) error {
+		if value != 42 {
+			t.Errorf("got %d, want 42", value)
+		}
+		consumer.Close()
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 
 func TestConsumerReceivesOnlyBoundTopicInOrder(t *testing.T) {
 	b := pubsub.NewBus()
-	consumer, err := NewConsumerClient[int](b, "orders")
+	orders := pubsub.NewTopic[int]("orders")
+	archive := pubsub.NewTopic[int]("archive")
+	consumer, err := NewConsumerClient(b, orders)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer consumer.Close()
-	orders := NewProducerClient[int](b, "orders")
-	other := NewProducerClient[int](b, "archive")
+	ordersProducer := NewProducerClient(b, orders)
+	other := NewProducerClient(b, archive)
 	for _, value := range []int{1, 2, 3} {
-		if err := orders.Publish(value); err != nil {
+		if err := ordersProducer.Publish(value); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -93,12 +123,13 @@ func TestConsumerReceivesOnlyBoundTopicInOrder(t *testing.T) {
 func TestConsumerLifecycle(t *testing.T) {
 	t.Run("handler error", func(t *testing.T) {
 		b := pubsub.NewBus()
-		c, err := NewConsumerClient[int](b, "events")
+		events := pubsub.NewTopic[int]("events")
+		c, err := NewConsumerClient(b, events)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer c.Close()
-		if err := NewProducerClient[int](b, "events").Publish(1); err != nil {
+		if err := NewProducerClient(b, events).Publish(1); err != nil {
 			t.Fatal(err)
 		}
 		want := errors.New("stop")
@@ -108,7 +139,7 @@ func TestConsumerLifecycle(t *testing.T) {
 	})
 	t.Run("cancellation", func(t *testing.T) {
 		b := pubsub.NewBus()
-		c, err := NewConsumerClient[int](b, "events")
+		c, err := NewConsumerClient(b, pubsub.NewTopic[int]("events"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -121,11 +152,12 @@ func TestConsumerLifecycle(t *testing.T) {
 	})
 	t.Run("shutdown drains buffered values", func(t *testing.T) {
 		b := pubsub.NewBus()
-		c, err := NewConsumerClient[int](b, "events")
+		events := pubsub.NewTopic[int]("events")
+		c, err := NewConsumerClient(b, events)
 		if err != nil {
 			t.Fatal(err)
 		}
-		p := NewProducerClient[int](b, "events")
+		p := NewProducerClient(b, events)
 		for _, value := range []int{4, 5, 6} {
 			if err := p.Publish(value); err != nil {
 				t.Fatal(err)
@@ -144,7 +176,7 @@ func TestConsumerLifecycle(t *testing.T) {
 	})
 	t.Run("close is idempotent", func(t *testing.T) {
 		b := pubsub.NewBus()
-		c, err := NewConsumerClient[int](b, "events")
+		c, err := NewConsumerClient(b, pubsub.NewTopic[int]("events"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -157,16 +189,16 @@ func TestConsumerLifecycle(t *testing.T) {
 	if err := (&consumer[int]{}).Run(context.Background(), func(context.Context, int) error { return nil }); err == nil {
 		t.Fatal("nil subscription unexpectedly succeeded")
 	}
-	if _, err := NewConsumerClient[string](nil, "events"); !errors.Is(err, pubsub.ErrNilBus) {
+	if _, err := NewConsumerClient(nil, pubsub.NewTopic[string]("events")); !errors.Is(err, pubsub.ErrNilBus) {
 		t.Fatalf("got %v", err)
 	}
 	b := pubsub.NewBus()
-	first, err := NewConsumerClient[int](b, "same")
+	first, err := NewConsumerClient(b, pubsub.NewTopic[int]("same"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer first.Close()
-	if _, err := NewConsumerClient[string](b, "same"); !errors.Is(err, pubsub.ErrTopicTypeConflict) {
+	if _, err := NewConsumerClient(b, pubsub.NewTopic[string]("same")); !errors.Is(err, pubsub.ErrTopicTypeConflict) {
 		t.Fatalf("got %v", err)
 	}
 }

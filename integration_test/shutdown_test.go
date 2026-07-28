@@ -13,12 +13,14 @@ import (
 
 func TestWorkflowShutdownClosesActivePublishersAndDrainsConsumers(t *testing.T) {
 	b := pubsub.NewBus()
-	consumer, err := client.NewConsumerClient[int](b, "drain")
+	drain := pubsub.NewTopic[int]("drain")
+	active := pubsub.NewTopic[int]("active")
+	consumer, err := client.NewConsumerClient(b, drain)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, value := range []int{10, 20, 30, 40} {
-		if err := client.NewProducerClient[int](b, "drain").Publish(value); err != nil {
+		if err := client.NewProducerClient(b, drain).Publish(value); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -45,7 +47,7 @@ func TestWorkflowShutdownClosesActivePublishersAndDrainsConsumers(t *testing.T) 
 		publishers.Go(func() {
 			<-start
 			for value := range 1000 {
-				if err := client.NewProducerClient[int](b, "active").Publish(publisher*1000 + value); err != nil && !errors.Is(err, pubsub.ErrBusClosed) {
+				if err := client.NewProducerClient(b, active).Publish(publisher*1000 + value); err != nil && !errors.Is(err, pubsub.ErrBusClosed) {
 					t.Errorf("publish during shutdown: %v", err)
 				}
 				select {
