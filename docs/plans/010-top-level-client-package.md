@@ -1,6 +1,6 @@
 # Plan 010: Top-level client package
 
-**Status:** Planned
+**Status:** Completed
 
 ## Feature
 
@@ -62,14 +62,14 @@ pubsub/integration/
 
 ## Tests
 
-- [ ] Verify the top-level `client` package builds and exposes the same
+- [x] Verify the top-level `client` package builds and exposes the same
   producer, consumer, handler, and constructor APIs.
-- [ ] Verify client lifecycle, topic isolation, ordering, backpressure, and
+- [x] Verify client lifecycle, topic isolation, ordering, backpressure, and
   shutdown tests still pass.
-- [ ] Search the repository for stale nested client package imports or
+- [x] Search the repository for stale nested client package imports or
   references.
-- [ ] Run `go test ./...`, `go test -race ./...`, and `go vet ./...`.
-- [ ] Run repeated race-detector stress tests for client and integration
+- [x] Run `go test ./...`, `go test -race ./...`, and `go vet ./...`.
+- [x] Run repeated race-detector stress tests for client and integration
   workflows.
 
 ## Completion criteria
