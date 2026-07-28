@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestShutdown_ItShouldPreserveQueuedValuesBeforeClosingSubscriptions(t *testing.T) {
+func TestShutdownPreservesQueuedValuesBeforeClosingSubscriptions(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	sub, err := Subscribe(b, topic)
@@ -36,7 +36,7 @@ func TestShutdown_ItShouldPreserveQueuedValuesBeforeClosingSubscriptions(t *test
 	sub.Unsubscribe()
 }
 
-func TestShutdown_ItShouldRejectPublishAndSubscribeAfterShutdown(t *testing.T) {
+func TestShutdownRejectsPublishAndSubscribeAfterShutdown(t *testing.T) {
 	b := NewBus()
 	require.NoError(t, Shutdown(context.Background(), b))
 
@@ -49,7 +49,7 @@ func TestShutdown_ItShouldRejectPublishAndSubscribeAfterShutdown(t *testing.T) {
 	assert.ErrorIs(t, err, ErrBusClosed)
 }
 
-func TestShutdown_ItShouldBeIdempotentAndSafeConcurrently(t *testing.T) {
+func TestShutdownIsIdempotentAndSafeConcurrently(t *testing.T) {
 	b := NewBus()
 	sub, err := Subscribe(b, NewTopic[int]("orders"))
 	require.NoError(t, err)
@@ -76,7 +76,7 @@ func TestShutdown_ItShouldBeIdempotentAndSafeConcurrently(t *testing.T) {
 	assert.NoError(t, Shutdown(canceled, b), "completed shutdown remains idempotent")
 }
 
-func TestShutdown_ItShouldHonorCancellationBeforeStarting(t *testing.T) {
+func TestShutdownHonorsCancellationBeforeStarting(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	ctx, cancel := context.WithCancel(context.Background())
@@ -88,14 +88,14 @@ func TestShutdown_ItShouldHonorCancellationBeforeStarting(t *testing.T) {
 	assert.NoError(t, Shutdown(context.Background(), b))
 }
 
-func TestShutdown_ItShouldUseBackgroundContextWhenContextIsNil(t *testing.T) {
+func TestShutdownUsesBackgroundContextWhenContextIsNil(t *testing.T) {
 	b := NewBus()
 
 	assert.NoError(t, Shutdown(nil, b))
 	assert.ErrorIs(t, Publish(b, NewTopic[int]("orders"), 1), ErrBusClosed)
 }
 
-func TestShutdown_ItShouldHonorCancellationWhileWaitingForTheBusLock(t *testing.T) {
+func TestShutdownHonorsCancellationWhileWaitingForTheBusLock(t *testing.T) {
 	b := NewBus()
 	b.mu.Lock()
 
@@ -116,7 +116,7 @@ func TestShutdown_ItShouldHonorCancellationWhileWaitingForTheBusLock(t *testing.
 	assert.NoError(t, Shutdown(context.Background(), b))
 }
 
-func TestShutdown_ItShouldHonorCancellationWhileWaitingForAnotherShutdown(t *testing.T) {
+func TestShutdownHonorsCancellationWhileWaitingForAnotherShutdown(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	sub, err := Subscribe(b, topic)
@@ -147,7 +147,7 @@ func TestShutdown_ItShouldHonorCancellationWhileWaitingForAnotherShutdown(t *tes
 	}, time.Second, time.Millisecond)
 }
 
-func TestShutdown_ItShouldAllowConsumersToFinishAfterBusTeardown(t *testing.T) {
+func TestConsumersFinishAfterBusTeardown(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	sub, err := Subscribe(b, topic)
@@ -172,7 +172,7 @@ func TestShutdown_ItShouldAllowConsumersToFinishAfterBusTeardown(t *testing.T) {
 	}
 }
 
-func TestShutdown_ItShouldExcludeSendsAndRegistrationsDuringConcurrentTeardown(t *testing.T) {
+func TestConcurrentTeardownExcludesSendsAndRegistrations(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	initial, err := Subscribe(b, topic)

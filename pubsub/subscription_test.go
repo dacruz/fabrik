@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSubscription_ItShouldStartEmptyAndBuffered(t *testing.T) {
+func TestSubscriptionStartsEmptyAndBuffered(t *testing.T) {
 	b := NewBus()
 	sub, err := Subscribe(b, NewTopic[int]("orders"))
 	require.NoError(t, err)
@@ -23,7 +23,7 @@ func TestSubscription_ItShouldStartEmptyAndBuffered(t *testing.T) {
 	}
 }
 
-func TestSubscription_ItShouldTrackTwoSubscriptionsIndependently(t *testing.T) {
+func TestSubscriptionsAreTrackedIndependently(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	first, err := Subscribe(b, topic)
@@ -43,7 +43,7 @@ func TestSubscription_ItShouldTrackTwoSubscriptionsIndependently(t *testing.T) {
 	assert.NotPanics(t, second.Unsubscribe)
 }
 
-func TestSubscription_ItShouldAllowIdempotentConcurrentUnsubscribe(t *testing.T) {
+func TestUnsubscribeIsIdempotentAndConcurrent(t *testing.T) {
 	b := NewBus()
 	sub, err := Subscribe(b, NewTopic[int]("orders"))
 	require.NoError(t, err)
@@ -64,7 +64,7 @@ func TestSubscription_ItShouldAllowIdempotentConcurrentUnsubscribe(t *testing.T)
 	assert.False(t, ok)
 }
 
-func TestSubscription_ItShouldWaitForAnActivePublishCriticalSectionBeforeUnsubscribe(t *testing.T) {
+func TestUnsubscribeWaitsForAnActivePublishCriticalSection(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	sub, err := Subscribe(b, topic)
@@ -105,7 +105,7 @@ func TestSubscription_ItShouldWaitForAnActivePublishCriticalSectionBeforeUnsubsc
 	<-done
 }
 
-func TestSubscription_ItShouldExcludeLaterPublishesAfterUnsubscribe(t *testing.T) {
+func TestUnsubscribeExcludesLaterPublishes(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	sub, err := Subscribe(b, topic)
@@ -122,7 +122,7 @@ func TestSubscription_ItShouldExcludeLaterPublishesAfterUnsubscribe(t *testing.T
 	}
 }
 
-func TestSubscription_ItShouldKeepTheTopicRegisteredAfterRemovingTheLastSubscriber(t *testing.T) {
+func TestRemovingLastSubscriberKeepsTopicRegistered(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	first, err := Subscribe(b, topic)
@@ -136,14 +136,14 @@ func TestSubscription_ItShouldKeepTheTopicRegisteredAfterRemovingTheLastSubscrib
 	second.Unsubscribe()
 }
 
-func TestSubscription_ItShouldHandleNilBus(t *testing.T) {
+func TestSubscriptionHandlesNilBus(t *testing.T) {
 	sub, err := Subscribe[int](nil, NewTopic[int]("orders"))
 
 	assert.Nil(t, sub)
 	assert.ErrorIs(t, err, ErrNilBus)
 }
 
-func TestSubscription_ItShouldAllowNilUnsubscribe(t *testing.T) {
+func TestNilUnsubscribeIsAllowed(t *testing.T) {
 	var sub *Subscription[int]
 
 	assert.NotPanics(t, sub.Unsubscribe)
