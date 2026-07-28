@@ -164,6 +164,24 @@ func TestPublishSucceedsWithNoSubscribers(t *testing.T) {
 	assert.NoError(t, Publish(b, NewTopic[int]("orders"), 1))
 }
 
+func TestPublishDeliversNilInterfaceValue(t *testing.T) {
+	type event interface{ eventMarker() }
+
+	b := NewBus()
+	topic := NewTopic[event]("events")
+	sub, err := Subscribe(b, topic)
+	require.NoError(t, err)
+	defer sub.Unsubscribe()
+
+	var value event
+	require.NotPanics(t, func() {
+		require.NoError(t, Publish(b, topic, value))
+	})
+
+	got := <-sub.Events
+	assert.Nil(t, got)
+}
+
 func TestPublishDoesNotBlockWhenSubscriberIsFull(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
