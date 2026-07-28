@@ -12,13 +12,16 @@ delivered when they are queued for a subscriber.
 
 ## Implementation status
 
-Plans 001 through 006 are implemented. The current package supports creating a
+Plans 001 through 012 are implemented. The current packages support creating a
 bus and typed topics, lazy type-safe topic registration, buffered subscriptions,
 idempotent, concurrency-safe unsubscription, non-blocking per-topic fan-out
-with ordering, bounded delivery errors for dropped subscriber deliveries, and
-graceful bus shutdown with buffered draining.
+with ordering, bounded delivery errors for dropped subscriber deliveries,
+graceful bus shutdown with buffered draining, and capability-oriented producer
+and consumer clients.
 
-Integration hardening is implemented in plan 006.
+Integration and concurrency hardening is implemented in plan 006. The client
+package and its topic-bound constructors are implemented in plans 009 through
+011. The API cleanup and bus-owned shutdown method are implemented in plan 012.
 
 ## Project structure
 
@@ -35,23 +38,30 @@ fabrik/
 ├── docs/
 │   └── in-process-pubsub.md
 │
-└── pubsub/
-    ├── bus.go
-    ├── topic.go
-    ├── subscription.go
-    ├── state.go
-    ├── errors.go
-    │
-    ├── bus_test.go
-    ├── topic_test.go
-    ├── publish_test.go
-    ├── subscription_test.go
-    ├── shutdown_test.go
-    │
-    └── integration_test/
-        ├── fanout_test.go
-        ├── backpressure_test.go
-        └── shutdown_test.go
+├── client/
+│   ├── producer.go
+│   ├── consumer.go
+│   ├── doc.go
+│   └── client_test.go
+│
+├── pubsub/
+│   ├── bus.go
+│   ├── topic.go
+│   ├── subscription.go
+│   ├── state.go
+│   ├── errors.go
+│   ├── doc.go
+│   ├── bus_test.go
+│   ├── topic_test.go
+│   ├── publish_test.go
+│   ├── subscription_test.go
+│   ├── locking_test.go
+│   └── shutdown_test.go
+│
+└── integration_test/
+    ├── fanout_test.go
+    ├── backpressure_test.go
+    └── shutdown_test.go
 ```
 
 File responsibilities:
@@ -62,7 +72,14 @@ File responsibilities:
 - `subscription.go` — generic `Subscription[T]`, subscribe, and unsubscribe.
 - `state.go` — internal topic state, subscriber bookkeeping, and
   synchronization.
-- `errors.go` — topic-type, nil-bus, delivery, and shutdown errors.
+- `errors.go` — topic-type, nil-bus, nil-context, delivery, and shutdown
+  errors.
+
+The `client` package provides role-specific producer and consumer interfaces.
+`producer.go` binds publishing to one typed topic, while `consumer.go` owns a
+subscription and runs a handler until cancellation, shutdown, or a handler
+error. The application that owns the bus remains responsible for calling
+`Bus.Shutdown`.
 
 Tests are grouped by observable behavior rather than implementation details.
 The package should expose the public API as `fabrik/pubsub`; implementation
@@ -146,7 +163,7 @@ type Subscription[T any] struct {
 
 func Subscribe[T any](b *Bus, topic Topic[T]) (*Subscription[T], error)
 func Publish[T any](b *Bus, topic Topic[T], value T) error
-func Shutdown(ctx context.Context, b *Bus) error
+func (b *Bus) Shutdown(ctx context.Context) error
 ```
 
 `Subscription` also provides an idempotent `Unsubscribe` operation:

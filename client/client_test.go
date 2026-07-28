@@ -36,7 +36,7 @@ func TestProducerPublishesToBoundTopicAndPreservesErrors(t *testing.T) {
 		t.Fatal(ctx.Err())
 	}
 
-	if err := pubsub.Shutdown(context.Background(), b); err != nil {
+	if err := b.Shutdown(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if err := producer.Publish(8); !errors.Is(err, pubsub.ErrBusClosed) {
@@ -163,7 +163,7 @@ func TestConsumerLifecycle(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if err := pubsub.Shutdown(context.Background(), b); err != nil {
+		if err := b.Shutdown(context.Background()); err != nil {
 			t.Fatal(err)
 		}
 		got := []int{}
@@ -199,6 +199,20 @@ func TestConsumerLifecycle(t *testing.T) {
 	}
 	defer first.Close()
 	if _, err := NewConsumerClient(b, pubsub.NewTopic[string]("same")); !errors.Is(err, pubsub.ErrTopicTypeConflict) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestConsumerRequiresContext(t *testing.T) {
+	b := pubsub.NewBus()
+	c, err := NewConsumerClient(b, pubsub.NewTopic[int]("events"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	err = c.Run(nil, func(context.Context, int) error { return nil })
+	if !errors.Is(err, ErrNilContext) {
 		t.Fatalf("got %v", err)
 	}
 }

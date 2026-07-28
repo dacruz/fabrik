@@ -19,6 +19,9 @@ type Handler[T any] func(context.Context, T) error
 // ErrNilHandler is returned when Run is given no handler.
 var ErrNilHandler = errors.New("client: nil handler")
 
+// ErrNilContext is returned when Run is given no context.
+var ErrNilContext = errors.New("client: nil context")
+
 type consumer[T any] struct {
 	sub *pubsub.Subscription[T]
 }
@@ -42,7 +45,7 @@ func (c *consumer[T]) Run(ctx context.Context, handler Handler[T]) error {
 		return ErrNilHandler
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		return ErrNilContext
 	}
 	for {
 		select {

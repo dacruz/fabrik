@@ -61,7 +61,7 @@ and pass the resulting typed topic to the appropriate client constructor.
 - [x] Define and test consumer lifecycle behavior for context cancellation,
   bus shutdown, handler errors, repeated `Close`, and a nil subscription.
 - [x] Document that clients share a `*pubsub.Bus`; the application that owns
-  the bus remains responsible for `pubsub.Shutdown`.
+  the bus remains responsible for `Bus.Shutdown`.
 - [x] Add package and README examples showing independent producer and
   consumer clients for topic A and topic B.
 

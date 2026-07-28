@@ -44,12 +44,12 @@ func NewBus() *Bus {
 // A caller that waits for another shutdown may return ctx.Err() if its context
 // expires; that does not cancel the shutdown already in progress. Once a
 // caller has started shutdown, bus-side teardown completes before it returns.
-func Shutdown(ctx context.Context, b *Bus) error {
+func (b *Bus) Shutdown(ctx context.Context) error {
 	if b == nil {
 		return ErrNilBus
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		return ErrNilContext
 	}
 	if err := b.lock(ctx); err != nil {
 		return err

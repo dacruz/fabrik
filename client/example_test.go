@@ -29,5 +29,5 @@ func Example() {
 		})
 	}()
 	_ = producer.Publish(OrderCreated{ID: "order-123"})
-	// The application owning b calls pubsub.Shutdown when the process stops.
+	// The application owning b calls b.Shutdown when the process stops.
 }

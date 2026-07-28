@@ -127,7 +127,7 @@ func TestWorkflowRepeatedSubscribeUnsubscribeAcrossTopics(t *testing.T) {
 	}
 	close(start)
 	workers.Wait()
-	if err := pubsub.Shutdown(nil, b); err != nil {
+	if err := b.Shutdown(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }

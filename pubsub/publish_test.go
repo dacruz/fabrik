@@ -120,7 +120,7 @@ func TestPublishReportsFullSubscriberAfterExactly100QueuedValues(t *testing.T) {
 	require.ErrorIs(t, err, ErrDelivery)
 	delivery := &DeliveryError{}
 	require.ErrorAs(t, err, &delivery)
-	assert.Equal(t, topic.Name(), delivery.Topic)
+	assert.Equal(t, topic.name, delivery.Topic)
 	assert.Equal(t, 1, delivery.Dropped)
 	assert.Equal(t, []int{0, 1, 2, 3, 4}, receiveInts(t, sub, 5))
 }
@@ -162,6 +162,24 @@ func TestPublishContinuesFanoutAfterDroppingOneDelivery(t *testing.T) {
 func TestPublishSucceedsWithNoSubscribers(t *testing.T) {
 	b := NewBus()
 	assert.NoError(t, Publish(b, NewTopic[int]("orders"), 1))
+}
+
+func TestPublishDeliversNilInterfaceValue(t *testing.T) {
+	type event interface{ eventMarker() }
+
+	b := NewBus()
+	topic := NewTopic[event]("events")
+	sub, err := Subscribe(b, topic)
+	require.NoError(t, err)
+	defer sub.Unsubscribe()
+
+	var value event
+	require.NotPanics(t, func() {
+		require.NoError(t, Publish(b, topic, value))
+	})
+
+	got := <-sub.Events
+	assert.Nil(t, got)
 }
 
 func TestPublishDoesNotBlockWhenSubscriberIsFull(t *testing.T) {

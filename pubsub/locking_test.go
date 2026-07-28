@@ -17,7 +17,7 @@ func TestBusTopicOperationDoesNotRetainBusLock(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		done <- b.withTopic(topic.Name(), topic.Type(), func(*topicState) error {
+		done <- b.withTopic(topic.name, topic.typ, func(*topicState) error {
 			close(started)
 			<-release
 			return nil
@@ -45,9 +45,9 @@ func TestBusUnrelatedTopicsPublishConcurrently(t *testing.T) {
 	b := NewBus()
 	topicA := NewTopic[int]("a")
 	topicB := NewTopic[int]("b")
-	stateA := &topicState{eventType: topicA.Type(), subscribers: make(map[uint64]subscriber)}
+	stateA := &topicState{eventType: topicA.typ, subscribers: make(map[uint64]subscriber)}
 	b.mu.Lock()
-	b.topics[topicA.Name()] = stateA
+	b.topics[topicA.name] = stateA
 	b.mu.Unlock()
 
 	stateA.mu.Lock()
@@ -95,7 +95,7 @@ func TestBusPublishSubscribeShutdownLifecycleBoundary(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			shutdownErr <- Shutdown(context.Background(), b)
+			shutdownErr <- b.Shutdown(context.Background())
 		}()
 		close(start)
 		wg.Wait()

@@ -32,6 +32,18 @@ func Subscribe[T any](b *Bus, topic Topic[T]) (*Subscription[T], error) {
 		}
 		subscription.id = state.addSubscriberLocked(subscriber{
 			send: func(value any) bool {
+				// A nil interface value becomes a nil any when it crosses
+				// this type-erased boundary. A direct type assertion would
+				// panic, even though nil is a valid value for interface T.
+				if value == nil {
+					var zero T
+					select {
+					case events <- zero:
+						return true
+					default:
+						return false
+					}
+				}
 				select {
 				case events <- value.(T):
 					return true

@@ -31,9 +31,9 @@ func TestSubscriptionsAreTrackedIndependently(t *testing.T) {
 	second, err := Subscribe(b, topic)
 	require.NoError(t, err)
 
-	assert.Len(t, b.topics[topic.Name()].subscribers, 2)
+	assert.Len(t, b.topics[topic.name].subscribers, 2)
 	first.Unsubscribe()
-	assert.Len(t, b.topics[topic.Name()].subscribers, 1)
+	assert.Len(t, b.topics[topic.name].subscribers, 1)
 	select {
 	case _, ok := <-first.Events:
 		assert.False(t, ok)
@@ -70,7 +70,7 @@ func TestUnsubscribeWaitsForAnActivePublishCriticalSection(t *testing.T) {
 	sub, err := Subscribe(b, topic)
 	require.NoError(t, err)
 
-	state := b.topics[topic.Name()]
+	state := b.topics[topic.name]
 	state.mu.Lock()
 	sub.events <- 7
 	started := make(chan struct{})
@@ -129,7 +129,7 @@ func TestRemovingLastSubscriberKeepsTopicRegistered(t *testing.T) {
 	require.NoError(t, err)
 	first.Unsubscribe()
 
-	assert.Contains(t, b.topics, topic.Name())
+	assert.Contains(t, b.topics, topic.name)
 	second, err := Subscribe(b, topic)
 	require.NoError(t, err)
 	assert.NotNil(t, second)

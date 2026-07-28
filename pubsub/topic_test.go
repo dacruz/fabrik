@@ -9,6 +9,6 @@ import (
 
 func TestTopicTypeIsStableForNamedAndPointerTypes(t *testing.T) {
 	type named string
-	assert.Equal(t, reflect.TypeFor[named](), NewTopic[named]("named").Type())
-	assert.Equal(t, reflect.TypeFor[*orderCreated](), NewTopic[*orderCreated]("pointer").Type())
+	assert.Equal(t, reflect.TypeFor[named](), NewTopic[named]("named").typ)
+	assert.Equal(t, reflect.TypeFor[*orderCreated](), NewTopic[*orderCreated]("pointer").typ)
 }
