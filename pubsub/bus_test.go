@@ -12,7 +12,7 @@ import (
 type orderCreated struct{ ID int }
 type orderCancelled struct{ ID int }
 
-func TestBus_ItShouldCreateAUsableEmptyRegistry(t *testing.T) {
+func TestNewBusIsUsableAndEmpty(t *testing.T) {
 	b := NewBus()
 	if !assert.NotNil(t, b, "NewBus should return a usable bus") {
 		return
@@ -20,7 +20,7 @@ func TestBus_ItShouldCreateAUsableEmptyRegistry(t *testing.T) {
 	assert.NoError(t, Publish(b, NewTopic[string]("ready"), ""))
 }
 
-func TestBus_ItShouldRegisterExactTopicNamesAndTypes(t *testing.T) {
+func TestTopicsRegisterByExactNameAndType(t *testing.T) {
 	b := NewBus()
 	_, err := Subscribe(b, NewTopic[orderCreated]("orders"))
 	assert.NoError(t, err)
@@ -29,7 +29,7 @@ func TestBus_ItShouldRegisterExactTopicNamesAndTypes(t *testing.T) {
 	assert.NoError(t, Publish(b, NewTopic[orderCancelled]("orders-cancelled"), orderCancelled{}))
 }
 
-func TestBus_ItShouldReportInspectableTopicTypeConflicts(t *testing.T) {
+func TestTopicTypeConflictIsInspectable(t *testing.T) {
 	b := NewBus()
 	name := "orders"
 	assert.NoError(t, Publish(b, NewTopic[orderCreated](name), orderCreated{}))
@@ -42,14 +42,14 @@ func TestBus_ItShouldReportInspectableTopicTypeConflicts(t *testing.T) {
 	assert.Equal(t, reflect.TypeFor[orderCancelled](), conflict.RequestedType)
 }
 
-func TestBus_ItShouldTreatEmptyTopicNamesAsOpaque(t *testing.T) {
+func TestEmptyTopicNameIsOpaque(t *testing.T) {
 	b := NewBus()
 	assert.NoError(t, Publish(b, NewTopic[int](""), 1))
 	assert.NoError(t, Publish(b, NewTopic[int](""), 2), "empty name should remain compatible")
 	assert.ErrorIs(t, Publish(b, NewTopic[string](""), ""), ErrTopicTypeConflict)
 }
 
-func TestBus_ItShouldSupportConcurrentRegistration(t *testing.T) {
+func TestConcurrentRegistration(t *testing.T) {
 	b := NewBus()
 	const workers = 100
 	var wg sync.WaitGroup
@@ -71,11 +71,11 @@ func TestBus_ItShouldSupportConcurrentRegistration(t *testing.T) {
 	}
 }
 
-func TestBus_ItShouldHandleNilBusDuringShutdown(t *testing.T) {
+func TestNilBusDuringShutdownIsHandled(t *testing.T) {
 	assert.ErrorIs(t, Shutdown(context.Background(), nil), ErrNilBus)
 }
 
-func TestBus_ItShouldFormatPublicErrors(t *testing.T) {
+func TestPublicErrorsAreFormatted(t *testing.T) {
 	conflict := &TopicTypeConflictError{
 		Topic:         "orders",
 		ExistingType:  reflect.TypeFor[int](),

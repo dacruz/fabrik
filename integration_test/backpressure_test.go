@@ -1,44 +1,47 @@
 package integration_test
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"testing"
 
+	"github.com/dacruz/fabrik/client"
 	"github.com/dacruz/fabrik/pubsub"
 )
 
 func TestWorkflowBackpressureDoesNotStarveHealthyConsumer(t *testing.T) {
 	b := pubsub.NewBus()
-	topic := pubsub.NewTopic[int]("events")
-	slow, err := pubsub.Subscribe(b, topic)
+	events := pubsub.NewTopic[int]("events")
+	slow, err := client.NewConsumerClient(b, events)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for value := range cap(slow.Events) {
-		if err := pubsub.Publish(b, topic, value); err != nil {
+	producer := client.NewProducerClient(b, events)
+	for value := range 100 {
+		if err := producer.Publish(value); err != nil {
 			t.Fatal(err)
 		}
 	}
-	healthy, err := pubsub.Subscribe(b, topic)
+	healthy, err := client.NewConsumerClient(b, events)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer slow.Unsubscribe()
-	defer healthy.Unsubscribe()
+	defer slow.Close()
+	defer healthy.Close()
 
-	err = pubsub.Publish(b, topic, cap(slow.Events))
+	err = producer.Publish(100)
 	var delivery *pubsub.DeliveryError
 	if !errors.As(err, &delivery) || delivery.Dropped != 1 {
 		t.Fatalf("expected one deterministic drop, got %v", err)
 	}
-	assertValues(t, healthy.Events, []int{cap(slow.Events)})
+	assertClientValues(t, healthy, []int{100})
 }
 
 func TestWorkflowConcurrentUnsubscribeDuringPublishing(t *testing.T) {
 	b := pubsub.NewBus()
-	topic := pubsub.NewTopic[int]("live")
-	sub, err := pubsub.Subscribe(b, topic)
+	live := pubsub.NewTopic[int]("live")
+	consumer, err := client.NewConsumerClient(b, live)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +53,7 @@ func TestWorkflowConcurrentUnsubscribeDuringPublishing(t *testing.T) {
 		publishers.Go(func() {
 			<-start
 			for value := range 1000 {
-				if err := pubsub.Publish(b, topic, publisher*1000+value); err != nil && !errors.Is(err, pubsub.ErrDelivery) {
+				if err := client.NewProducerClient(b, live).Publish(publisher*1000 + value); err != nil && !errors.Is(err, pubsub.ErrDelivery) {
 					t.Errorf("publish: %v", err)
 				}
 				select {
@@ -67,16 +70,19 @@ func TestWorkflowConcurrentUnsubscribeDuringPublishing(t *testing.T) {
 	}
 	close(start)
 	<-firstPublish
-	sub.Unsubscribe()
+	consumer.Close()
 	close(stop)
 	publishers.Wait()
-	for range sub.Events {
-	}
 }
 
 func TestWorkflowRepeatedSubscribeUnsubscribeAcrossTopics(t *testing.T) {
 	b := pubsub.NewBus()
-	topics := []pubsub.Topic[int]{pubsub.NewTopic[int]("topic-0"), pubsub.NewTopic[int]("topic-1"), pubsub.NewTopic[int]("topic-2"), pubsub.NewTopic[int]("topic-3")}
+	topics := []pubsub.Topic[int]{
+		pubsub.NewTopic[int]("topic-0"),
+		pubsub.NewTopic[int]("topic-1"),
+		pubsub.NewTopic[int]("topic-2"),
+		pubsub.NewTopic[int]("topic-3"),
+	}
 	start := make(chan struct{})
 	var workers sync.WaitGroup
 	for worker := range 12 {
@@ -84,7 +90,7 @@ func TestWorkflowRepeatedSubscribeUnsubscribeAcrossTopics(t *testing.T) {
 			<-start
 			for iteration := range 50 {
 				topic := topics[(worker+iteration)%len(topics)]
-				sub, err := pubsub.Subscribe(b, topic)
+				consumer, err := client.NewConsumerClient(b, topic)
 				if err != nil {
 					t.Errorf("subscribe: %v", err)
 					continue
@@ -95,18 +101,19 @@ func TestWorkflowRepeatedSubscribeUnsubscribeAcrossTopics(t *testing.T) {
 				go func() {
 					defer close(done)
 					close(ready)
-					for value := range sub.Events {
+					_ = consumer.Run(context.Background(), func(_ context.Context, value int) error {
 						if value == worker*1000+iteration {
 							received <- value
 						}
-					}
+						return nil
+					})
 				}()
 				<-ready
 				value := worker*1000 + iteration
-				if err := pubsub.Publish(b, topic, value); err != nil && !errors.Is(err, pubsub.ErrDelivery) {
+				if err := client.NewProducerClient(b, topic).Publish(value); err != nil && !errors.Is(err, pubsub.ErrDelivery) {
 					t.Errorf("publish: %v", err)
 				}
-				sub.Unsubscribe()
+				consumer.Close()
 				<-done
 				select {
 				case got := <-received:

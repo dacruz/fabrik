@@ -20,4 +20,8 @@
 // The bus does not cross process boundaries and does not execute message
 // handlers. Consumers read subscription channels and define their own handler,
 // acknowledgement, retry, and ordering semantics.
+//
+// For capability-oriented role-specific clients, import
+// github.com/dacruz/fabrik/client. The client package depends on this low-level
+// package and leaves bus ownership and shutdown with the application.
 package pubsub

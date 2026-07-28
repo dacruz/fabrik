@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPublish_ItShouldFanOutToEverySubscriber(t *testing.T) {
+func TestPublishFansOutToEverySubscriber(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	first, err := Subscribe(b, topic)
@@ -31,7 +31,7 @@ func TestPublish_ItShouldFanOutToEverySubscriber(t *testing.T) {
 	}
 }
 
-func TestPublish_ItShouldDeliverOnlyToTheExactTopic(t *testing.T) {
+func TestPublishDeliversOnlyToTheExactTopic(t *testing.T) {
 	b := NewBus()
 	orders := NewTopic[int]("orders")
 	ordersArchive := NewTopic[int]("orders/archive")
@@ -53,7 +53,7 @@ func TestPublish_ItShouldDeliverOnlyToTheExactTopic(t *testing.T) {
 	assertEmpty(t, prefixSub)
 }
 
-func TestPublish_ItShouldNotDeliverEarlierValuesToNewSubscribers(t *testing.T) {
+func TestNewSubscribersDoNotReceiveEarlierValues(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	first, err := Subscribe(b, topic)
@@ -70,7 +70,7 @@ func TestPublish_ItShouldNotDeliverEarlierValuesToNewSubscribers(t *testing.T) {
 	assert.Equal(t, []int{2}, receiveInts(t, second, 1))
 }
 
-func TestPublish_ItShouldNotBlockOnASlowSubscriber(t *testing.T) {
+func TestPublishDoesNotBlockOnSlowSubscriber(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	slow, err := Subscribe(b, topic)
@@ -104,7 +104,7 @@ func TestPublish_ItShouldNotBlockOnASlowSubscriber(t *testing.T) {
 	}
 }
 
-func TestPublish_ItShouldReportAFullSubscriberAfterExactly100QueuedValues(t *testing.T) {
+func TestPublishReportsFullSubscriberAfterExactly100QueuedValues(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	sub, err := Subscribe(b, topic)
@@ -125,7 +125,7 @@ func TestPublish_ItShouldReportAFullSubscriberAfterExactly100QueuedValues(t *tes
 	assert.Equal(t, []int{0, 1, 2, 3, 4}, receiveInts(t, sub, 5))
 }
 
-func TestPublish_ItShouldPreserveAllFirst100ValuesInOrder(t *testing.T) {
+func TestPublishPreservesAllFirst100ValuesInOrder(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	sub, err := Subscribe(b, topic)
@@ -139,7 +139,7 @@ func TestPublish_ItShouldPreserveAllFirst100ValuesInOrder(t *testing.T) {
 	assert.Equal(t, makeRange(subscriptionBufferSize), receiveInts(t, sub, subscriptionBufferSize))
 }
 
-func TestPublish_ItShouldContinueFanoutAfterDroppingOneDelivery(t *testing.T) {
+func TestPublishContinuesFanoutAfterDroppingOneDelivery(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	full, err := Subscribe(b, topic)
@@ -159,12 +159,12 @@ func TestPublish_ItShouldContinueFanoutAfterDroppingOneDelivery(t *testing.T) {
 	assert.Equal(t, 100, <-available.Events)
 }
 
-func TestPublish_ItShouldSucceedWithNoSubscribers(t *testing.T) {
+func TestPublishSucceedsWithNoSubscribers(t *testing.T) {
 	b := NewBus()
 	assert.NoError(t, Publish(b, NewTopic[int]("orders"), 1))
 }
 
-func TestPublish_ItShouldNotBlockWhenSubscriberIsFull(t *testing.T) {
+func TestPublishDoesNotBlockWhenSubscriberIsFull(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	sub, err := Subscribe(b, topic)
@@ -185,7 +185,7 @@ func TestPublish_ItShouldNotBlockWhenSubscriberIsFull(t *testing.T) {
 	}
 }
 
-func TestPublish_ItShouldPreserveOneTopicOrderForConcurrentPublishers(t *testing.T) {
+func TestConcurrentPublishersPreserveOneTopicOrder(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	sub, err := Subscribe(b, topic)
@@ -218,13 +218,13 @@ func TestPublish_ItShouldPreserveOneTopicOrderForConcurrentPublishers(t *testing
 	assert.Equal(t, values, secondValues)
 }
 
-func TestPublish_ItShouldHandleNilBus(t *testing.T) {
+func TestPublishHandlesNilBus(t *testing.T) {
 	err := Publish[int](nil, NewTopic[int]("orders"), 1)
 
 	assert.ErrorIs(t, err, ErrNilBus)
 }
 
-func TestPublish_ItShouldReportAllDroppedDeliveries(t *testing.T) {
+func TestPublishReportsAllDroppedDeliveries(t *testing.T) {
 	b := NewBus()
 	topic := NewTopic[int]("orders")
 	first, err := Subscribe(b, topic)
@@ -250,7 +250,7 @@ func TestPublish_ItShouldReportAllDroppedDeliveries(t *testing.T) {
 	assert.Equal(t, 2, <-available.Events)
 }
 
-func TestPublish_ItShouldReportTopicTypeConflicts(t *testing.T) {
+func TestPublishReportsTopicTypeConflicts(t *testing.T) {
 	b := NewBus()
 	topicName := "orders"
 	require.NoError(t, Publish(b, NewTopic[int](topicName), 1))

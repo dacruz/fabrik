@@ -7,19 +7,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dacruz/fabrik/client"
 	"github.com/dacruz/fabrik/pubsub"
 )
 
 func TestWorkflowShutdownClosesActivePublishersAndDrainsConsumers(t *testing.T) {
 	b := pubsub.NewBus()
-	drainTopic := pubsub.NewTopic[int]("drain")
-	activeTopic := pubsub.NewTopic[int]("active")
-	sub, err := pubsub.Subscribe(b, drainTopic)
+	drain := pubsub.NewTopic[int]("drain")
+	active := pubsub.NewTopic[int]("active")
+	consumer, err := client.NewConsumerClient(b, drain)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, value := range []int{10, 20, 30, 40} {
-		if err := pubsub.Publish(b, drainTopic, value); err != nil {
+		if err := client.NewProducerClient(b, drain).Publish(value); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -30,8 +31,9 @@ func TestWorkflowShutdownClosesActivePublishersAndDrainsConsumers(t *testing.T) 
 		close(consumerStarted)
 		<-consumerRelease
 		values := make([]int, 0, 4)
-		for value := range sub.Events {
-			values = append(values, value)
+		err := consumer.Run(context.Background(), func(_ context.Context, value int) error { values = append(values, value); return nil })
+		if err != nil {
+			t.Errorf("consumer run: %v", err)
 		}
 		consumed <- values
 	}()
@@ -45,7 +47,7 @@ func TestWorkflowShutdownClosesActivePublishersAndDrainsConsumers(t *testing.T) 
 		publishers.Go(func() {
 			<-start
 			for value := range 1000 {
-				if err := pubsub.Publish(b, activeTopic, publisher*1000+value); err != nil && !errors.Is(err, pubsub.ErrBusClosed) {
+				if err := client.NewProducerClient(b, active).Publish(publisher*1000 + value); err != nil && !errors.Is(err, pubsub.ErrBusClosed) {
 					t.Errorf("publish during shutdown: %v", err)
 				}
 				select {
