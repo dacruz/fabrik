@@ -19,6 +19,7 @@ Plans 001 through 004.
 - [x] Leave queued channel values available for consumers to drain with `range`.
 - [x] Make repeated and concurrent shutdown calls safe. Define whether later calls return nil or the first result and test that contract.
 - [x] Honor context expiry while waiting for bus-side shutdown work; do not claim that application handlers have finished processing.
+- [x] Reject nil contexts explicitly rather than silently substituting `context.Background()`.
 - [x] Ensure shutdown with no topics/subscribers is successful.
 
 ## Tests

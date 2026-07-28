@@ -28,6 +28,8 @@ Plans 001 through 011.
 - [x] Convert package-level `Shutdown(ctx, b)` into `(*Bus).Shutdown(ctx)`.
 - [x] Preserve nil-bus handling, idempotency, concurrent shutdown behavior,
   context cancellation semantics, and queued-value draining.
+- [x] Reject nil contexts explicitly with `ErrNilContext` instead of silently
+  substituting `context.Background()`.
 - [x] Update client and integration callers to use `b.Shutdown(ctx)`.
 - [x] Update README, package documentation, and prior plan references.
 - [x] Keep `Subscribe`, `Publish`, and subscription teardown available to the
@@ -37,6 +39,7 @@ Plans 001 through 011.
 
 - [x] Update in-package tests to use private topic fields.
 - [x] Verify a nil `*Bus` can still return `ErrNilBus` through the method call.
+- [x] Verify shutdown and consumer execution reject nil contexts.
 - [x] Run `go test ./...`.
 - [x] Run `go vet ./...`.
 

@@ -49,7 +49,7 @@ func (b *Bus) Shutdown(ctx context.Context) error {
 		return ErrNilBus
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		return ErrNilContext
 	}
 	if err := b.lock(ctx); err != nil {
 		return err

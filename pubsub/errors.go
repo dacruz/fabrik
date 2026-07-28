@@ -13,6 +13,9 @@ var ErrTopicTypeConflict = errors.New("pubsub topic type conflict")
 // ErrNilBus is returned when an operation is attempted on a nil bus.
 var ErrNilBus = errors.New("pubsub: nil bus")
 
+// ErrNilContext is returned when an operation requiring a context receives nil.
+var ErrNilContext = errors.New("pubsub: nil context")
+
 // ErrBusClosed is returned when an operation is attempted after shutdown
 // begins. Use errors.Is to inspect this lifecycle error.
 var ErrBusClosed = errors.New("pubsub: bus is shut down")

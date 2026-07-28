@@ -202,3 +202,17 @@ func TestConsumerLifecycle(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestConsumerRequiresContext(t *testing.T) {
+	b := pubsub.NewBus()
+	c, err := NewConsumerClient(b, pubsub.NewTopic[int]("events"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	err = c.Run(nil, func(context.Context, int) error { return nil })
+	if !errors.Is(err, ErrNilContext) {
+		t.Fatalf("got %v", err)
+	}
+}

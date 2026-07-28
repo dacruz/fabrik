@@ -88,11 +88,11 @@ func TestShutdownHonorsCancellationBeforeStarting(t *testing.T) {
 	assert.NoError(t, b.Shutdown(context.Background()))
 }
 
-func TestShutdownUsesBackgroundContextWhenContextIsNil(t *testing.T) {
+func TestShutdownRejectsNilContext(t *testing.T) {
 	b := NewBus()
 
-	assert.NoError(t, b.Shutdown(nil))
-	assert.ErrorIs(t, Publish(b, NewTopic[int]("orders"), 1), ErrBusClosed)
+	assert.ErrorIs(t, b.Shutdown(nil), ErrNilContext)
+	assert.NoError(t, Publish(b, NewTopic[int]("orders"), 1))
 }
 
 func TestShutdownHonorsCancellationWhileWaitingForTheBusLock(t *testing.T) {
