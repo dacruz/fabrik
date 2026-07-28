@@ -69,7 +69,7 @@ The package should expose the public API as `fabrik/pubsub`; implementation
 tests may use `package pubsub`, while selected API tests may use
 `package pubsub_test`.
 
-The `pubsub/integration` package contains system-level tests that exercise the
+The root-level `integration` package contains system-level tests that exercise the
 library as a whole through its public API. These tests create realistic
 publisher and consumer goroutines and cover complete workflows such as
 fan-out, backpressure, concurrent unsubscription, and graceful shutdown.

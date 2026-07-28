@@ -12,7 +12,7 @@ Plans 001 through 005.
 
 ## Implementation
 
-- [x] Add `pubsub/integration` tests using `package integration_test` and only the public API; this package is the user-visible workflow proving the feature.
+- [x] Add root-level `integration` tests using `package integration_test` and only the public API; this package is the user-visible workflow proving the feature.
 - [x] Cover a fan-out workflow with multiple publishers and consumers, exact topic isolation, deterministic buffer filling, concurrent unsubscription, and graceful shutdown with draining consumers.
 - [x] Add stress tests across many goroutines, multiple topics, repeated subscribe/unsubscribe cycles, full and draining buffers, and shutdown while publishers are active.
 - [x] Use synchronization primitives and explicit handshakes rather than sleeps or assumptions about goroutine scheduling.
