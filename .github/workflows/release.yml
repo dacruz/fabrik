@@ -1,31 +1,30 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
 
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out repository history
+      - name: Check out merged commit
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
-
-      - name: Verify tag points to main
-        shell: bash
-        run: |
-          git fetch origin main --no-tags
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/main"; then
-            echo "Release tags must point to a commit on main."
-            exit 1
-          fi
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -36,7 +35,41 @@ jobs:
       - name: Verify release
         run: make verify
 
+      - name: Determine next minor version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          latest_tag=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | head -n 1)
+          if [[ -z "$latest_tag" ]]; then
+            version="v0.1.0"
+          elif [[ "$latest_tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            version="v${BASH_REMATCH[1]}.$((BASH_REMATCH[2] + 1)).0"
+          else
+            echo "Latest tag is not a supported semantic version: $latest_tag" >&2
+            exit 1
+          fi
+
+          if git rev-parse "$version" >/dev/null 2>&1; then
+            echo "Version tag already exists: $version" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push version tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          MERGE_COMMIT: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$VERSION" "$MERGE_COMMIT"
+          git push origin "$VERSION"
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes
+          VERSION: ${{ steps.version.outputs.version }}
+        run: gh release create "$VERSION" --verify-tag --generate-notes
