@@ -72,7 +72,7 @@ func TestConcurrentRegistration(t *testing.T) {
 }
 
 func TestNilBusDuringShutdownIsHandled(t *testing.T) {
-	assert.ErrorIs(t, Shutdown(context.Background(), nil), ErrNilBus)
+	assert.ErrorIs(t, (*Bus)(nil).Shutdown(context.Background()), ErrNilBus)
 }
 
 func TestPublicErrorsAreFormatted(t *testing.T) {

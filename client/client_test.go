@@ -36,7 +36,7 @@ func TestProducerPublishesToBoundTopicAndPreservesErrors(t *testing.T) {
 		t.Fatal(ctx.Err())
 	}
 
-	if err := pubsub.Shutdown(context.Background(), b); err != nil {
+	if err := b.Shutdown(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if err := producer.Publish(8); !errors.Is(err, pubsub.ErrBusClosed) {
@@ -163,7 +163,7 @@ func TestConsumerLifecycle(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if err := pubsub.Shutdown(context.Background(), b); err != nil {
+		if err := b.Shutdown(context.Background()); err != nil {
 			t.Fatal(err)
 		}
 		got := []int{}

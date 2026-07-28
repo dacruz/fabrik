@@ -21,7 +21,7 @@ func TestShutdownPreservesQueuedValuesBeforeClosingSubscriptions(t *testing.T) {
 		value++
 		require.NoError(t, Publish(b, topic, value))
 	}
-	require.NoError(t, Shutdown(context.Background(), b))
+	require.NoError(t, b.Shutdown(context.Background()))
 
 	values := make([]int, 0, 3)
 	for value := range sub.Events {
@@ -38,7 +38,7 @@ func TestShutdownPreservesQueuedValuesBeforeClosingSubscriptions(t *testing.T) {
 
 func TestShutdownRejectsPublishAndSubscribeAfterShutdown(t *testing.T) {
 	b := NewBus()
-	require.NoError(t, Shutdown(context.Background(), b))
+	require.NoError(t, b.Shutdown(context.Background()))
 
 	topic := NewTopic[int]("orders")
 	err := Publish(b, topic, 1)
@@ -59,7 +59,7 @@ func TestShutdownIsIdempotentAndSafeConcurrently(t *testing.T) {
 	var wg sync.WaitGroup
 	for range callers {
 		wg.Go(func() {
-			errs <- Shutdown(context.Background(), b)
+			errs <- b.Shutdown(context.Background())
 		})
 	}
 	wg.Wait()
@@ -70,10 +70,10 @@ func TestShutdownIsIdempotentAndSafeConcurrently(t *testing.T) {
 
 	_, ok := <-sub.Events
 	assert.False(t, ok)
-	assert.NoError(t, Shutdown(context.Background(), b), "calls after completion return the first result")
+	assert.NoError(t, b.Shutdown(context.Background()), "calls after completion return the first result")
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
-	assert.NoError(t, Shutdown(canceled, b), "completed shutdown remains idempotent")
+	assert.NoError(t, b.Shutdown(canceled), "completed shutdown remains idempotent")
 }
 
 func TestShutdownHonorsCancellationBeforeStarting(t *testing.T) {
@@ -82,16 +82,16 @@ func TestShutdownHonorsCancellationBeforeStarting(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := Shutdown(ctx, b)
+	err := b.Shutdown(ctx)
 	assert.ErrorIs(t, err, context.Canceled)
 	assert.NoError(t, Publish(b, topic, 1), "canceled shutdown did not cross the lifecycle boundary")
-	assert.NoError(t, Shutdown(context.Background(), b))
+	assert.NoError(t, b.Shutdown(context.Background()))
 }
 
 func TestShutdownUsesBackgroundContextWhenContextIsNil(t *testing.T) {
 	b := NewBus()
 
-	assert.NoError(t, Shutdown(nil, b))
+	assert.NoError(t, b.Shutdown(nil))
 	assert.ErrorIs(t, Publish(b, NewTopic[int]("orders"), 1), ErrBusClosed)
 }
 
@@ -101,7 +101,7 @@ func TestShutdownHonorsCancellationWhileWaitingForTheBusLock(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- Shutdown(ctx, b) }()
+	go func() { done <- b.Shutdown(ctx) }()
 
 	time.Sleep(5 * time.Millisecond)
 	cancel()
@@ -113,7 +113,7 @@ func TestShutdownHonorsCancellationWhileWaitingForTheBusLock(t *testing.T) {
 		t.Fatal("shutdown did not honor cancellation while waiting for the bus lock")
 	}
 	b.mu.Unlock()
-	assert.NoError(t, Shutdown(context.Background(), b))
+	assert.NoError(t, b.Shutdown(context.Background()))
 }
 
 func TestShutdownHonorsCancellationWhileWaitingForAnotherShutdown(t *testing.T) {
@@ -121,18 +121,18 @@ func TestShutdownHonorsCancellationWhileWaitingForAnotherShutdown(t *testing.T) 
 	topic := NewTopic[int]("orders")
 	sub, err := Subscribe(b, topic)
 	require.NoError(t, err)
-	state := b.topics[topic.Name()]
+	state := b.topics[topic.name]
 	state.mu.Lock()
 
 	firstDone := make(chan error, 1)
 	go func() {
-		firstDone <- Shutdown(context.Background(), b)
+		firstDone <- b.Shutdown(context.Background())
 	}()
 	waitForBusState(t, b, busShuttingDown)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err = Shutdown(ctx, b)
+	err = b.Shutdown(ctx)
 	assert.ErrorIs(t, err, context.Canceled)
 
 	state.mu.Unlock()
@@ -163,7 +163,7 @@ func TestConsumersFinishAfterBusTeardown(t *testing.T) {
 		consumed <- values
 	}()
 
-	require.NoError(t, Shutdown(context.Background(), b))
+	require.NoError(t, b.Shutdown(context.Background()))
 	select {
 	case values := <-consumed:
 		assert.Equal(t, []int{1}, values)
@@ -215,7 +215,7 @@ func TestConcurrentTeardownExcludesSendsAndRegistrations(t *testing.T) {
 
 	close(start)
 	shutdownDone := make(chan error, 1)
-	go func() { shutdownDone <- Shutdown(context.Background(), b) }()
+	go func() { shutdownDone <- b.Shutdown(context.Background()) }()
 	wg.Go(func() {
 		initial.Unsubscribe()
 	})

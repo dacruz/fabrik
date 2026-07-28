@@ -146,7 +146,7 @@ type Subscription[T any] struct {
 
 func Subscribe[T any](b *Bus, topic Topic[T]) (*Subscription[T], error)
 func Publish[T any](b *Bus, topic Topic[T], value T) error
-func Shutdown(ctx context.Context, b *Bus) error
+func (b *Bus) Shutdown(ctx context.Context) error
 ```
 
 `Subscription` also provides an idempotent `Unsubscribe` operation:

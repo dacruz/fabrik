@@ -14,12 +14,6 @@ func NewTopic[T any](name string) Topic[T] {
 	return Topic[T]{name: name, typ: reflect.TypeFor[T]()}
 }
 
-// Name returns the topic's exact, opaque name.
-func (t Topic[T]) Name() string { return t.name }
-
-// Type returns the event type represented by the topic.
-func (t Topic[T]) Type() reflect.Type { return t.typ }
-
 // Publish sends value to every current subscriber of topic without blocking.
 // Values sent to a full subscriber channel are dropped and reported as a
 // DeliveryError; publishing continues to subscribers with available capacity.

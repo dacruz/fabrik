@@ -43,7 +43,7 @@ go get github.com/dacruz/fabrik
 For application code, the role-specific clients keep each event type and exact
 topic name together. Producer and consumer clients share a `*pubsub.Bus`; the
 application that owns the bus remains responsible for calling
-`pubsub.Shutdown`.
+`Bus.Shutdown`.
 
 ```go
 import (
@@ -78,7 +78,7 @@ if err := producer.Publish(OrderCreated{ID: "order-123"}); err != nil {
 	// Handle a closed bus, a topic type conflict, or a DeliveryError.
 	log.Println(err)
 }
-// The application owning b calls pubsub.Shutdown when the process stops.
+// The application owning b calls b.Shutdown when the process stops.
 ```
 
 Clients are intentionally capability-oriented: a producer only publishes and
@@ -165,7 +165,7 @@ cancel a caller waiting for shutdown to begin or for another caller's shutdown
 to finish; it does not cancel teardown already in progress.
 
 ```go
-if err := pubsub.Shutdown(context.Background(), b); err != nil {
+if err := b.Shutdown(context.Background()); err != nil {
 	return err
 }
 ```

@@ -64,7 +64,7 @@ func TestWorkflowShutdownClosesActivePublishersAndDrainsConsumers(t *testing.T) 
 	}
 	close(start)
 	<-firstPublish
-	if err := pubsub.Shutdown(context.Background(), b); err != nil {
+	if err := b.Shutdown(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	close(stop)

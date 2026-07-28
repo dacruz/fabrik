@@ -13,7 +13,7 @@ Plans 001 through 004.
 ## Implementation
 
 - [x] Add a closed/shutting-down bus state guarded by the bus mutex and a sentinel shutdown error usable with `errors.Is`.
-- [x] Implement `Shutdown(ctx context.Context, b *Bus) error`.
+- [x] Implement `(*Bus).Shutdown(ctx context.Context) error`.
 - [x] Transition to shutdown before closing subscriptions so no new publish or subscription can race past the lifecycle boundary.
 - [x] Snapshot topics/subscribers under the appropriate locks, remove subscriber registrations, and close each subscription channel exactly once after all sends for that subscriber are excluded.
 - [x] Leave queued channel values available for consumers to drain with `range`.

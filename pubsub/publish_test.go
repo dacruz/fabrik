@@ -120,7 +120,7 @@ func TestPublishReportsFullSubscriberAfterExactly100QueuedValues(t *testing.T) {
 	require.ErrorIs(t, err, ErrDelivery)
 	delivery := &DeliveryError{}
 	require.ErrorAs(t, err, &delivery)
-	assert.Equal(t, topic.Name(), delivery.Topic)
+	assert.Equal(t, topic.name, delivery.Topic)
 	assert.Equal(t, 1, delivery.Dropped)
 	assert.Equal(t, []int{0, 1, 2, 3, 4}, receiveInts(t, sub, 5))
 }
