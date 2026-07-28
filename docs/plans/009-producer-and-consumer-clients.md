@@ -77,7 +77,7 @@ role-specific topic.
   including when both event types are otherwise compatible.
 - [x] Test consumer cancellation, handler errors, bus shutdown, buffered
   draining, and idempotent close.
-- [x] Migrate the root-level `integration` workflow tests to construct and use
+- [x] Migrate the root-level `integration_test` workflow tests to construct and use
   producer and consumer clients instead of directly calling `Subscribe`,
   `Publish`, and managing raw subscriptions.
 - [x] Keep focused low-level `pubsub` unit tests for bus, topic, subscription,

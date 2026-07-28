@@ -38,7 +38,7 @@ client/
     consumer.go
     client_test.go
     example_test.go
-integration/
+integration_test/
     ...
 ```
 

@@ -48,7 +48,7 @@ fabrik/
     ├── subscription_test.go
     ├── shutdown_test.go
     │
-    └── integration/
+    └── integration_test/
         ├── fanout_test.go
         ├── backpressure_test.go
         └── shutdown_test.go
@@ -69,7 +69,7 @@ The package should expose the public API as `fabrik/pubsub`; implementation
 tests may use `package pubsub`, while selected API tests may use
 `package pubsub_test`.
 
-The root-level `integration` package contains system-level tests that exercise the
+The root-level `integration_test` package contains system-level tests that exercise the
 library as a whole through its public API. These tests create realistic
 publisher and consumer goroutines and cover complete workflows such as
 fan-out, backpressure, concurrent unsubscription, and graceful shutdown.
