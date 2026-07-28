@@ -1,8 +1,3 @@
-// Package client provides role-specific clients for a pubsub.Bus.
-//
-// A producer or consumer client is bound to one exact topic name and event
-// type. Clients share the bus they are constructed with; the application that
-// owns that bus remains responsible for calling pubsub.Shutdown.
 package client
 
 import (
@@ -11,11 +6,6 @@ import (
 
 	"github.com/dacruz/fabrik/pubsub"
 )
-
-// ProducerClient publishes values to one typed topic.
-type ProducerClient[T any] interface {
-	Publish(T) error
-}
 
 // ConsumerClient receives values from one typed topic.
 type ConsumerClient[T any] interface {
@@ -27,21 +17,7 @@ type ConsumerClient[T any] interface {
 type Handler[T any] func(context.Context, T) error
 
 // ErrNilHandler is returned when Run is given no handler.
-var ErrNilHandler = errors.New("pubsub/client: nil handler")
-
-type producer[T any] struct {
-	bus   *pubsub.Bus
-	topic pubsub.Topic[T]
-}
-
-// NewProducerClient binds a producer to topicName on b.
-func NewProducerClient[T any](b *pubsub.Bus, topicName string) ProducerClient[T] {
-	return &producer[T]{bus: b, topic: pubsub.NewTopic[T](topicName)}
-}
-
-func (p *producer[T]) Publish(value T) error {
-	return pubsub.Publish(p.bus, p.topic, value)
-}
+var ErrNilHandler = errors.New("client: nil handler")
 
 type consumer[T any] struct {
 	sub *pubsub.Subscription[T]
@@ -60,7 +36,7 @@ func NewConsumerClient[T any](b *pubsub.Bus, topicName string) (ConsumerClient[T
 
 func (c *consumer[T]) Run(ctx context.Context, handler Handler[T]) error {
 	if c == nil || c.sub == nil {
-		return errors.New("pubsub/client: nil subscription")
+		return errors.New("client: nil subscription")
 	}
 	if handler == nil {
 		return ErrNilHandler

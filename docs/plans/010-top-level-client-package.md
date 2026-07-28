@@ -44,19 +44,20 @@ pubsub/integration/
 
 ## Implementation
 
-- [ ] Move the role-specific client implementation from `pubsub/client` to a
+- [x] Move the role-specific client implementation from the nested pubsub
+  client package to a
   top-level `client` package.
-- [ ] Preserve the public `github.com/dacruz/fabrik/pubsub` package and all of
+- [x] Preserve the public `github.com/dacruz/fabrik/pubsub` package and all of
   its existing low-level APIs and error identities.
-- [ ] Keep `client` dependent on `pubsub` without introducing an import cycle.
-- [ ] Split client implementation files by responsibility where useful,
+- [x] Keep `client` dependent on `pubsub` without introducing an import cycle.
+- [x] Split client implementation files by responsibility where useful,
   keeping producer and consumer behavior easy to locate.
-- [ ] Update all client tests, examples, integration tests, and README imports
+- [x] Update all client tests, examples, integration tests, and README imports
   to use `github.com/dacruz/fabrik/client`.
-- [ ] Update package comments and examples to document the two public package
+- [x] Update package comments and examples to document the two public package
   paths and their responsibilities.
-- [ ] Remove the old `pubsub/client` package after all references are migrated.
-- [ ] Keep unrelated low-level `pubsub` tests and implementation unchanged
+- [x] Remove the old nested client package after all references are migrated.
+- [x] Keep unrelated low-level `pubsub` tests and implementation unchanged
   except where import or package documentation updates are required.
 
 ## Tests
@@ -65,8 +66,8 @@ pubsub/integration/
   producer, consumer, handler, and constructor APIs.
 - [ ] Verify client lifecycle, topic isolation, ordering, backpressure, and
   shutdown tests still pass.
-- [ ] Search the repository for stale `github.com/dacruz/fabrik/pubsub/client`
-  imports or references.
+- [ ] Search the repository for stale nested client package imports or
+  references.
 - [ ] Run `go test ./...`, `go test -race ./...`, and `go vet ./...`.
 - [ ] Run repeated race-detector stress tests for client and integration
   workflows.

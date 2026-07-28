@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dacruz/fabrik/client"
 	"github.com/dacruz/fabrik/pubsub"
-	"github.com/dacruz/fabrik/pubsub/client"
 )
 
 func TestWorkflowShutdownClosesActivePublishersAndDrainsConsumers(t *testing.T) {

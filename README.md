@@ -51,7 +51,7 @@ import (
 	"log"
 
 	"github.com/dacruz/fabrik/pubsub"
-	"github.com/dacruz/fabrik/pubsub/client"
+	"github.com/dacruz/fabrik/client"
 )
 
 type OrderCreated struct{ ID string }

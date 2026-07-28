@@ -15,7 +15,7 @@ Plans 001 through 007.
 
 ## Proposed package and API
 
-Add a small `pubsub/client` package that adapts the low-level `pubsub` API.
+Add a small `client` package that adapts the low-level `pubsub` API.
 The package should expose capability-oriented generic interfaces:
 
 ```go
@@ -55,7 +55,7 @@ role-specific topic.
 
 ## Implementation
 
-- [x] Add the `pubsub/client` package and generic producer and consumer client
+- [x] Add the `client` package and generic producer and consumer client
   implementations.
 - [x] Bind each client to one exact topic name and one event type.
 - [x] Preserve `ErrNilBus`, `ErrBusClosed`, topic type conflicts, and
