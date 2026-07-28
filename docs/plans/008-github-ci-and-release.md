@@ -5,8 +5,8 @@
 ## Feature completed
 
 GitHub Actions continuously validates pull requests and direct pushes to
-`main`. Version-tagged commits that are reachable from `main` are published as
-GitHub releases, while tags created from other branches are rejected.
+`main`. Every merged pull request creates the next minor version tag and
+publishes a GitHub release.
 
 ## Depends on
 
@@ -20,9 +20,10 @@ Plans 001 through 007.
   dependencies.
 - [x] Build all packages with `go build ./...`.
 - [x] Run the regular tests, race-detector tests, and `go vet ./...`.
-- [x] Add a release workflow triggered by version tags matching `v*`.
-- [x] Verify that a release tag points to a commit reachable from `origin/main`
-  before publishing it.
+- [x] Add a release workflow triggered by merged pull requests targeting
+  `main`.
+- [x] Determine the next minor semantic version, starting at `v0.1.0`.
+- [x] Create and push the version tag from the merged commit.
 - [x] Re-run the build, tests, and vet checks in the release workflow.
 - [x] Create a GitHub release with generated release notes using the pushed
   version tag. Since Fabrik is a library, GitHub's source archives are the
@@ -30,18 +31,13 @@ Plans 001 through 007.
 
 ## Release usage
 
-After the version commit is on `main`, create and push a version tag:
-
-```sh
-git checkout main
-git tag v0.1.0
-git push origin v0.1.0
-```
+After a pull request is merged into `main`, the release workflow automatically
+creates the next minor version tag and GitHub release.
 
 ## Completion criteria
 
 - Every pull request and direct push to `main` runs build, test, race, and vet
   checks.
-- A tag on a non-`main` commit cannot publish a release.
-- A valid version tag on `main` creates a GitHub release with generated notes.
+- Every merged pull request targeting `main` creates a minor version release.
+- The release tag points to the merged commit and includes generated notes.
 - The release workflow validates the project before publishing.
