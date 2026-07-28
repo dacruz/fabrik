@@ -1,56 +1,68 @@
 package integration_test
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/dacruz/fabrik/pubsub"
+	"github.com/dacruz/fabrik/pubsub/client"
 )
 
 func TestWorkflowFanOutAndTopicIsolation(t *testing.T) {
 	b := pubsub.NewBus()
-	orders := pubsub.NewTopic[int]("orders")
-	archive := pubsub.NewTopic[int]("orders/archive")
-
-	first, err := pubsub.Subscribe(b, orders)
+	first, err := client.NewConsumerClient[int](b, "orders")
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := pubsub.Subscribe(b, orders)
+	second, err := client.NewConsumerClient[int](b, "orders")
 	if err != nil {
 		t.Fatal(err)
 	}
-	archiveSub, err := pubsub.Subscribe(b, archive)
+	archiveSub, err := client.NewConsumerClient[int](b, "orders/archive")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer first.Unsubscribe()
-	defer second.Unsubscribe()
-	defer archiveSub.Unsubscribe()
+	defer first.Close()
+	defer second.Close()
+	defer archiveSub.Close()
+	orders := client.NewProducerClient[int](b, "orders")
+	archive := client.NewProducerClient[int](b, "orders/archive")
 
 	for _, value := range []int{1, 2, 3} {
-		if err := pubsub.Publish(b, orders, value); err != nil {
+		if err := orders.Publish(value); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := pubsub.Publish(b, archive, 99); err != nil {
+	if err := archive.Publish(99); err != nil {
 		t.Fatal(err)
 	}
 
-	assertValues(t, first.Events, []int{1, 2, 3})
-	assertValues(t, second.Events, []int{1, 2, 3})
-	assertValues(t, archiveSub.Events, []int{99})
+	assertClientValues(t, first, []int{1, 2, 3})
+	assertClientValues(t, second, []int{1, 2, 3})
+	assertClientValues(t, archiveSub, []int{99})
 }
 
-func assertValues[T comparable](t *testing.T, events <-chan T, want []T) {
+func assertClientValues[T comparable](t *testing.T, consumer client.ConsumerClient[T], want []T) {
 	t.Helper()
 	got := make([]T, 0, len(want))
-	for range want {
-		select {
-		case value := <-events:
+	done := make(chan error, 1)
+	go func() {
+		done <- consumer.Run(context.Background(), func(_ context.Context, value T) error {
 			got = append(got, value)
-		default:
-			t.Fatalf("received %d values, want %d", len(got), len(want))
+			if len(got) == len(want) {
+				consumer.Close()
+			}
+			return nil
+		})
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
 		}
+	case <-time.After(time.Second):
+		t.Fatalf("received %d values, want %d", len(got), len(want))
 	}
 	assertEqualValues(t, got, want)
 }

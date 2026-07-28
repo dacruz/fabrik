@@ -1,6 +1,6 @@
 # Plan 009: Producer and consumer clients
 
-**Status:** Planned
+**Status:** Completed
 
 ## Feature
 
@@ -55,35 +55,35 @@ role-specific topic.
 
 ## Implementation
 
-- [ ] Add the `pubsub/client` package and generic producer and consumer client
+- [x] Add the `pubsub/client` package and generic producer and consumer client
   implementations.
-- [ ] Bind each client to one exact topic name and one event type.
-- [ ] Preserve `ErrNilBus`, `ErrBusClosed`, topic type conflicts, and
+- [x] Bind each client to one exact topic name and one event type.
+- [x] Preserve `ErrNilBus`, `ErrBusClosed`, topic type conflicts, and
   `DeliveryError` from the underlying package.
-- [ ] Define and test consumer lifecycle behavior for context cancellation,
+- [x] Define and test consumer lifecycle behavior for context cancellation,
   bus shutdown, handler errors, repeated `Close`, and a nil subscription.
-- [ ] Document that clients share a `*pubsub.Bus`; the application that owns
+- [x] Document that clients share a `*pubsub.Bus`; the application that owns
   the bus remains responsible for `pubsub.Shutdown`.
-- [ ] Add package and README examples showing independent producer and
+- [x] Add package and README examples showing independent producer and
   consumer clients for topic A and topic B.
 
 ## Tests
 
-- [ ] Add unit tests for `ProducerClient` publishing typed values to its bound
+- [x] Add unit tests for `ProducerClient` publishing typed values to its bound
   topic and rejecting a closed or nil bus.
-- [ ] Add unit tests for `ConsumerClient` receiving only values from its bound
+- [x] Add unit tests for `ConsumerClient` receiving only values from its bound
   topic and preserving delivery order.
-- [ ] Test that a producer on topic A cannot deliver to a consumer on topic B,
+- [x] Test that a producer on topic A cannot deliver to a consumer on topic B,
   including when both event types are otherwise compatible.
-- [ ] Test consumer cancellation, handler errors, bus shutdown, buffered
+- [x] Test consumer cancellation, handler errors, bus shutdown, buffered
   draining, and idempotent close.
-- [ ] Migrate the `pubsub/integration` workflow tests to construct and use
+- [x] Migrate the `pubsub/integration` workflow tests to construct and use
   producer and consumer clients instead of directly calling `Subscribe`,
   `Publish`, and managing raw subscriptions.
-- [ ] Keep focused low-level `pubsub` unit tests for bus, topic, subscription,
+- [x] Keep focused low-level `pubsub` unit tests for bus, topic, subscription,
   backpressure, locking, and shutdown internals; client-facing integration
   tests should exercise only the client interfaces and public lifecycle.
-- [ ] Run `go test ./...`, `go test -race ./...`, and repeated stress runs for
+- [x] Run `go test ./...`, `go test -race ./...`, and repeated stress runs for
   the client workflows.
 
 ## Completion criteria

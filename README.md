@@ -21,6 +21,7 @@ communication between producers and consumers in long-lived Go processes.
 - Bounded backpressure reporting through inspectable `DeliveryError` values.
 - Idempotent, concurrency-safe unsubscription.
 - Graceful, idempotent shutdown that preserves queued events for consumers to drain.
+- Role-specific producer and consumer clients that hide topic wiring.
 
 Fabrik is process-local: it does not provide a broker, persistence, replay,
 network transport, or cross-process delivery. It delivers values through
@@ -38,6 +39,49 @@ go get github.com/dacruz/fabrik
 ```
 
 ## Usage
+
+For application code, the role-specific clients keep each event type and exact
+topic name together. Producer and consumer clients share a `*pubsub.Bus`; the
+application that owns the bus remains responsible for calling
+`pubsub.Shutdown`.
+
+```go
+import (
+	"context"
+	"log"
+
+	"github.com/dacruz/fabrik/pubsub"
+	"github.com/dacruz/fabrik/pubsub/client"
+)
+
+type OrderCreated struct{ ID string }
+type OrderArchived struct{ ID string }
+
+b := pubsub.NewBus()
+producer := client.NewProducerClient[OrderCreated](b, "orders.created")
+consumer, err := client.NewConsumerClient[OrderArchived](b, "orders.archived")
+if err != nil {
+	log.Fatal(err)
+}
+defer consumer.Close()
+
+go func() {
+	_ = consumer.Run(context.Background(), func(_ context.Context, event OrderArchived) error {
+		log.Println(event.ID)
+		return nil
+	})
+}()
+
+if err := producer.Publish(OrderCreated{ID: "order-123"}); err != nil {
+	// Handle a closed bus, a topic type conflict, or a DeliveryError.
+	log.Println(err)
+}
+// The application owning b calls pubsub.Shutdown when the process stops.
+```
+
+Clients are intentionally capability-oriented: a producer only publishes and
+a consumer only runs a handler for its bound topic. Use the lower-level API
+below when direct topic and subscription management is needed.
 
 The public API is in the `pubsub` package. Construct a bus and a typed topic.
 Creating a topic does not register it; registration is lazy and happens on the
