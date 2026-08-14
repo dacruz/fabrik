@@ -9,9 +9,21 @@ import (
 
 // Bus owns event delivery state.
 type Bus struct {
-	mu      sync.Mutex
-	streams map[StreamType]*stream
+	mu           sync.Mutex
+	streams      map[StreamType]*stream
+	state        busState
+	admitted     sync.WaitGroup
+	shutdownDone chan struct{}
+	shutdownErr  error
 }
+
+type busState uint8
+
+const (
+	busOpen busState = iota
+	busShuttingDown
+	busClosed
+)
 
 // NewBus creates an empty event bus.
 func NewBus() *Bus { return &Bus{streams: make(map[StreamType]*stream)} }
@@ -31,7 +43,20 @@ type stream struct {
 }
 
 type subscriber struct {
+	stream  *stream
 	deliver func(queuedEvent) bool
+	closed  bool
+	closeFn func()
+}
+
+func (s *subscriber) close() {
+	if s.closed {
+		return
+	}
+	s.closed = true
+	if s.closeFn != nil {
+		s.closeFn()
+	}
 }
 
 func (b *Bus) Emit(ctx context.Context, payload EventPayload, opts ...EventOptions) error {
@@ -44,6 +69,11 @@ func (b *Bus) Emit(ctx context.Context, payload EventPayload, opts ...EventOptio
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	release, err := b.admit(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	if isNilPayload(payload) {
 		return ErrNilPayload
 	}
@@ -82,6 +112,77 @@ func (b *Bus) Emit(ctx context.Context, payload EventPayload, opts ...EventOptio
 		return &DeliveryError{StreamType: streamType, Dropped: dropped}
 	}
 	return nil
+}
+
+func (b *Bus) admit(ctx context.Context) (func(), error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if b.state != busOpen {
+		return nil, ErrBusClosed
+	}
+	b.admitted.Add(1)
+	return b.admitted.Done, nil
+}
+
+// Shutdown stops admission, waits for admitted operations, and then closes
+// subscriptions after their queued events have become drainable.
+func (b *Bus) Shutdown(ctx context.Context) error {
+	if b == nil {
+		return ErrNilBus
+	}
+	if ctx == nil {
+		return ErrNilContext
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	b.mu.Lock()
+	if b.state == busOpen {
+		b.state = busShuttingDown
+		b.shutdownDone = make(chan struct{})
+		go b.finishShutdown(b.shutdownDone)
+	}
+	done := b.shutdownDone
+	b.mu.Unlock()
+
+	select {
+	case <-done:
+		b.mu.Lock()
+		err := b.shutdownErr
+		b.mu.Unlock()
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (b *Bus) finishShutdown(done chan struct{}) {
+	b.admitted.Wait()
+
+	b.mu.Lock()
+	streams := make([]*stream, 0, len(b.streams))
+	for _, stream := range b.streams {
+		streams = append(streams, stream)
+	}
+	b.mu.Unlock()
+
+	for _, stream := range streams {
+		stream.mu.Lock()
+		for _, subscriber := range stream.subscribers {
+			subscriber.close()
+		}
+		stream.mu.Unlock()
+	}
+
+	b.mu.Lock()
+	b.state = busClosed
+	b.shutdownErr = nil
+	b.mu.Unlock()
+	close(done)
 }
 
 func (b *Bus) registerStream(streamType StreamType, payloadType reflect.Type) (*stream, error) {

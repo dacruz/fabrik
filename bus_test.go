@@ -23,6 +23,18 @@ type separateDeliveryEvent struct{ Number int }
 
 func (separateDeliveryEvent) StreamType() StreamType { return "separate.delivery.events" }
 
+type blockingDeliveryEvent struct {
+	entered chan struct{}
+	release chan struct{}
+	once    *sync.Once
+}
+
+func (event blockingDeliveryEvent) StreamType() StreamType {
+	event.once.Do(func() { close(event.entered) })
+	<-event.release
+	return "blocking.delivery.events"
+}
+
 func TestEmitRejectsNilPayloads(t *testing.T) {
 	b := NewBus()
 	ctx := context.Background()
@@ -135,6 +147,137 @@ func TestBusSerializesConcurrentEmittersPerStream(t *testing.T) {
 		seen[(<-subscription.Events).Payload.Number] = true
 	}
 	assert.Len(t, seen, emitters*perEmitter)
+}
+
+func TestSubscriptionCloseIsIdempotentAndDrainsQueuedEvents(t *testing.T) {
+	bus := NewBus()
+	subscription, err := Subscribe[deliveryEvent](context.Background(), bus, WithBufferSize(2))
+	require.NoError(t, err)
+	require.NoError(t, bus.Emit(context.Background(), deliveryEvent{Number: 1}))
+	require.NoError(t, bus.Emit(context.Background(), deliveryEvent{Number: 2}))
+
+	subscription.Close()
+	subscription.Close()
+
+	assert.Equal(t, 1, (<-subscription.Events).Payload.Number)
+	assert.Equal(t, 2, (<-subscription.Events).Payload.Number)
+	_, open := <-subscription.Events
+	assert.False(t, open)
+	assert.NoError(t, bus.Emit(context.Background(), deliveryEvent{Number: 3}))
+}
+
+func TestBusShutdownDrainsQueuedEventsAndRejectsNewOperations(t *testing.T) {
+	bus := NewBus()
+	subscription, err := Subscribe[deliveryEvent](context.Background(), bus, WithBufferSize(2))
+	require.NoError(t, err)
+	require.NoError(t, bus.Emit(context.Background(), deliveryEvent{Number: 1}))
+	require.NoError(t, bus.Emit(context.Background(), deliveryEvent{Number: 2}))
+
+	require.NoError(t, bus.Shutdown(context.Background()))
+	assert.Equal(t, 1, (<-subscription.Events).Payload.Number)
+	assert.Equal(t, 2, (<-subscription.Events).Payload.Number)
+	_, open := <-subscription.Events
+	assert.False(t, open)
+
+	assert.ErrorIs(t, bus.Emit(context.Background(), deliveryEvent{Number: 3}), ErrBusClosed)
+	_, err = Subscribe[deliveryEvent](context.Background(), bus)
+	assert.ErrorIs(t, err, ErrBusClosed)
+	assert.NoError(t, bus.Shutdown(context.Background()))
+}
+
+func TestSubscriptionCloseIsSafeDuringConcurrentCalls(t *testing.T) {
+	subscription, err := Subscribe[deliveryEvent](context.Background(), NewBus())
+	require.NoError(t, err)
+
+	var group sync.WaitGroup
+	for range 32 {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			subscription.Close()
+		}()
+	}
+	group.Wait()
+
+	_, open := <-subscription.Events
+	assert.False(t, open)
+}
+
+func TestBusShutdownRacesConcurrentShutdownCallers(t *testing.T) {
+	bus := NewBus()
+	subscription, err := Subscribe[deliveryEvent](context.Background(), bus, WithBufferSize(32))
+	require.NoError(t, err)
+	for number := 0; number < 8; number++ {
+		require.NoError(t, bus.Emit(context.Background(), deliveryEvent{Number: number}))
+	}
+
+	const callers = 16
+	errors := make(chan error, callers)
+	var group sync.WaitGroup
+	for range callers {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			errors <- bus.Shutdown(context.Background())
+		}()
+	}
+	group.Wait()
+	close(errors)
+	for shutdownErr := range errors {
+		assert.NoError(t, shutdownErr)
+	}
+
+	for number := 0; number < 8; number++ {
+		assert.Equal(t, number, (<-subscription.Events).Payload.Number)
+	}
+	_, open := <-subscription.Events
+	assert.False(t, open)
+}
+
+func TestBusRejectsOperationsAfterShutdownBegins(t *testing.T) {
+	bus := NewBus()
+	shutdownDone := make(chan error, 1)
+	go func() { shutdownDone <- bus.Shutdown(context.Background()) }()
+
+	require.Eventually(t, func() bool {
+		bus.mu.Lock()
+		defer bus.mu.Unlock()
+		return bus.state == busShuttingDown || bus.state == busClosed
+	}, time.Second, time.Millisecond)
+
+	assert.ErrorIs(t, bus.Emit(context.Background(), deliveryEvent{}), ErrBusClosed)
+	_, err := Subscribe[deliveryEvent](context.Background(), bus)
+	assert.ErrorIs(t, err, ErrBusClosed)
+	assert.NoError(t, <-shutdownDone)
+}
+
+func TestBusShutdownContextCancellationDoesNotStopShutdown(t *testing.T) {
+	bus := NewBus()
+	blockingEvent := blockingDeliveryEvent{
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+		once:    &sync.Once{},
+	}
+	emitDone := make(chan error, 1)
+	go func() {
+		emitDone <- bus.Emit(context.Background(), blockingEvent)
+	}()
+	<-blockingEvent.entered
+
+	ctx, cancel := context.WithCancel(context.Background())
+	shutdownDone := make(chan error, 1)
+	go func() { shutdownDone <- bus.Shutdown(ctx) }()
+	require.Eventually(t, func() bool {
+		bus.mu.Lock()
+		defer bus.mu.Unlock()
+		return bus.state == busShuttingDown
+	}, time.Second, time.Millisecond)
+	cancel()
+	assert.ErrorIs(t, <-shutdownDone, context.Canceled)
+
+	close(blockingEvent.release)
+	assert.NoError(t, <-emitDone)
+	assert.NoError(t, bus.Shutdown(context.Background()))
 }
 
 func reflectType[T any]() reflect.Type { return reflect.TypeFor[T]() }

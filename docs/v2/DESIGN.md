@@ -480,8 +480,8 @@ The concurrency tests must pass under the race detector.
 
 ### Phase 3: lifecycle
 
-- Add idempotent subscription close and graceful bus shutdown.
-- Test queued-event draining, concurrent close, shutdown races, and rejected
+- [x] Add idempotent subscription close and graceful bus shutdown.
+- [x] Test queued-event draining, concurrent close, shutdown races, and rejected
   operations after shutdown begins.
 
 ### Phase 4: public examples and hardening

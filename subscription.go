@@ -19,11 +19,20 @@ func WithBufferSize(size int) SubscriptionOptions {
 
 // Subscription is the typed event stream returned by Subscribe.
 type Subscription[T any] struct {
-	Events <-chan Event[T]
+	Events     <-chan Event[T]
+	subscriber *subscriber
 }
 
-// Close is a placeholder for the Phase 3 lifecycle implementation.
-func (s *Subscription[T]) Close() {}
+// Close stops delivery to the subscription and closes its event channel.
+// Events already queued remain available to the consumer.
+func (s *Subscription[T]) Close() {
+	if s == nil || s.subscriber == nil {
+		return
+	}
+	s.subscriber.stream.mu.Lock()
+	s.subscriber.close()
+	s.subscriber.stream.mu.Unlock()
+}
 
 func Subscribe[T EventPayload](ctx context.Context, b *Bus, opts ...SubscriptionOptions) (*Subscription[T], error) {
 	if b == nil {
@@ -35,6 +44,11 @@ func Subscribe[T EventPayload](ctx context.Context, b *Bus, opts ...Subscription
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	release, err := b.admit(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	config := subscriptionConfig{bufferSize: 128}
 	for _, option := range opts {
 		if option != nil {
@@ -53,9 +67,14 @@ func Subscribe[T EventPayload](ctx context.Context, b *Bus, opts ...Subscription
 		return nil, err
 	}
 	channel := make(chan Event[T], config.bufferSize)
-	subscription := &Subscription[T]{Events: channel}
+	subscriber := &subscriber{stream: stream}
+	subscription := &Subscription[T]{Events: channel, subscriber: subscriber}
+	subscriber.closeFn = func() { close(channel) }
 	stream.mu.Lock()
-	stream.subscribers = append(stream.subscribers, &subscriber{deliver: func(event queuedEvent) bool {
+	subscriber.deliver = func(event queuedEvent) bool {
+		if subscriber.closed {
+			return true
+		}
 		delivered := Event[T]{
 			ID:            event.id,
 			OccurredAt:    event.metadata.OccurredAt,
@@ -70,7 +89,8 @@ func Subscribe[T EventPayload](ctx context.Context, b *Bus, opts ...Subscription
 		default:
 			return false
 		}
-	}})
+	}
+	stream.subscribers = append(stream.subscribers, subscriber)
 	stream.mu.Unlock()
 	return subscription, nil
 }
