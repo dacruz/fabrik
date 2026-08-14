@@ -486,9 +486,9 @@ The concurrency tests must pass under the race detector.
 
 ### Phase 4: public examples and hardening
 
-- Add package documentation and examples at the module root.
-- Run `go test ./...`, `go test -race ./...`, and `go vet ./...`.
-- Add stress tests for multi-stream concurrent producers and consumers.
+- [x] Add package documentation and examples at the module root.
+- [x] Run `go test ./...`, `go test -race ./...`, and `go vet ./...`.
+- [x] Add stress tests for multi-stream concurrent producers and consumers.
 - Only after the contract is stable, decide whether v2 needs a handler/client
   convenience layer.
 

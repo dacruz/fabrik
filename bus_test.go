@@ -46,6 +46,20 @@ func TestEmitRejectsNilPayloads(t *testing.T) {
 	assert.ErrorIs(t, b.Emit(ctx, payload), ErrNilPayload)
 }
 
+func TestBusRejectsNilBusAndContext(t *testing.T) {
+	var nilBus *Bus
+	assert.ErrorIs(t, nilBus.Emit(context.Background(), deliveryEvent{}), ErrNilBus)
+	_, err := Subscribe[deliveryEvent](context.Background(), nilBus)
+	assert.ErrorIs(t, err, ErrNilBus)
+	assert.ErrorIs(t, nilBus.Shutdown(context.Background()), ErrNilBus)
+
+	bus := NewBus()
+	assert.ErrorIs(t, bus.Emit(nil, deliveryEvent{}), ErrNilContext)
+	_, err = Subscribe[deliveryEvent](nil, bus)
+	assert.ErrorIs(t, err, ErrNilContext)
+	assert.ErrorIs(t, bus.Shutdown(nil), ErrNilContext)
+}
+
 func TestBusRejectsZeroOccurredAtAfterApplyingOptions(t *testing.T) {
 	assert.ErrorIs(t, NewBus().Emit(context.Background(), testPayload{}, WithOccurredAt(time.Time{})), ErrInvalidOccurredAt)
 }
