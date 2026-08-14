@@ -467,10 +467,10 @@ The concurrency tests must pass under the race detector.
 
 ### Phase 1: event primitives
 
-- Add `Event[T]`, `Bus`, and the package-level generic subscription function
+- [x] Add `Event[T]`, `Bus`, and the package-level generic subscription function
   at the module root using `package fabrik`.
-- Define validation and error identities.
-- Test zero values, nil payloads, header isolation, and stream type identity.
+- [x] Define validation and error identities.
+- [x] Test zero values, nil payloads, header isolation, and stream type identity.
 
 ### Phase 2: bus and fan-out
 
