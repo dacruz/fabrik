@@ -474,9 +474,9 @@ The concurrency tests must pass under the race detector.
 
 ### Phase 2: bus and fan-out
 
-- Add the stream registry and per-stream subscriber queues.
-- Implement `Emit` and `Subscribe` with the semantics above.
-- Test fan-out, stream isolation, ordering, full queues, and concurrent emitters.
+- [x] Add the stream registry and per-stream subscriber queues.
+- [x] Implement `Emit` and `Subscribe` with the semantics above.
+- [x] Test fan-out, stream isolation, ordering, full queues, and concurrent emitters.
 
 ### Phase 3: lifecycle
 
