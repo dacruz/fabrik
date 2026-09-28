@@ -5,7 +5,12 @@ import (
 	"reflect"
 )
 
-type SubscriptionOptions interface{ applySubscription(*subscriptionConfig) }
+// SubscriptionOption configures a subscription.
+type SubscriptionOption interface{ applySubscription(*subscriptionConfig) }
+
+// SubscriptionOptions is retained for source compatibility.
+// Deprecated: use SubscriptionOption.
+type SubscriptionOptions = SubscriptionOption
 
 type subscriptionConfig struct{ bufferSize int }
 
@@ -13,7 +18,9 @@ type subscriptionOption func(*subscriptionConfig)
 
 func (o subscriptionOption) applySubscription(config *subscriptionConfig) { o(config) }
 
-func WithBufferSize(size int) SubscriptionOptions {
+// WithBufferSize sets the number of events that can be queued for a
+// subscription before further deliveries are dropped.
+func WithBufferSize(size int) SubscriptionOption {
 	return subscriptionOption(func(config *subscriptionConfig) { config.bufferSize = size })
 }
 
@@ -30,11 +37,12 @@ func (s *Subscription[T]) Close() {
 		return
 	}
 	s.subscriber.stream.mu.Lock()
-	s.subscriber.close()
+	s.subscriber.closeLocked()
 	s.subscriber.stream.mu.Unlock()
 }
 
-func Subscribe[T EventPayload](ctx context.Context, b *Bus, opts ...SubscriptionOptions) (*Subscription[T], error) {
+// Subscribe creates a typed subscription for T's stream identity.
+func Subscribe[T EventPayload](ctx context.Context, b *Bus, opts ...SubscriptionOption) (*Subscription[T], error) {
 	if b == nil {
 		return nil, ErrNilBus
 	}
@@ -90,7 +98,7 @@ func Subscribe[T EventPayload](ctx context.Context, b *Bus, opts ...Subscription
 			return false
 		}
 	}
-	stream.subscribers = append(stream.subscribers, subscriber)
+	stream.subscribers[subscriber] = struct{}{}
 	stream.mu.Unlock()
 	return subscription, nil
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/dacruz/fabrik"
+	"github.com/dacruz/fabrik/v2"
 )
 
 type orderCreated struct {

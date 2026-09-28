@@ -84,11 +84,31 @@ func TestStructuredErrorsExposeStableMessagesAndCategories(t *testing.T) {
 	assert.Equal(t, `fabrik: stream type "orders" is registered for fabrik.testPayload, cannot use fabrik.conflictingTestPayload`, conflict.Error())
 	assert.ErrorIs(t, conflict, ErrStreamTypeConflict)
 	assert.True(t, errors.Is(conflict, ErrStreamTypeConflict))
+
+	payloadConflict := &PayloadTypeConflictError{
+		PayloadType: reflect.TypeFor[testPayload](),
+		Existing:    "orders.created",
+		Requested:   "orders.updated",
+	}
+	assert.Equal(t, `fabrik: payload type fabrik.testPayload is registered for stream type "orders.created", cannot use "orders.updated"`, payloadConflict.Error())
+	assert.ErrorIs(t, payloadConflict, ErrPayloadTypeConflict)
+}
+
+func TestEventIDGenerationPreservesUnderlyingFailure(t *testing.T) {
+	sourceErr := errors.New("entropy unavailable")
+	_, err := newEventIDFrom(failingReader{err: sourceErr})
+
+	assert.ErrorIs(t, err, ErrEventIDGeneration)
+	assert.ErrorIs(t, err, sourceErr)
 }
 
 type conflictingTestPayload struct{}
 
 func (conflictingTestPayload) StreamType() StreamType { return "conflicting.test" }
+
+type failingReader struct{ err error }
+
+func (reader failingReader) Read([]byte) (int, error) { return 0, reader.err }
 
 func cloneHeaders(headers map[string]string) map[string]string {
 	copy := make(map[string]string, len(headers))
