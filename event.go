@@ -47,12 +47,23 @@ var (
 // DeliveryError reports a partial fan-out delivery. Delivered subscribers have
 // already received the event, so callers must not treat this as an atomic
 // failure and blindly retry the emission.
+//
+// DroppedSubscriptions identifies the subscriptions whose queues were full.
+// Subscription IDs are unique within a Bus; names are optional and need not be
+// unique. The slice order is unspecified.
 type DeliveryError struct {
-	EventID    string
-	StreamType StreamType
-	Attempted  int
-	Delivered  int
-	Dropped    int
+	EventID              string
+	StreamType           StreamType
+	Attempted            int
+	Delivered            int
+	Dropped              int
+	DroppedSubscriptions []SubscriptionRef
+}
+
+// SubscriptionRef identifies a subscription involved in event delivery.
+type SubscriptionRef struct {
+	ID   uint64
+	Name string
 }
 
 func (e *DeliveryError) Error() string {
@@ -122,8 +133,9 @@ func WithCausationID(id string) EventOption {
 	return eventOption(func(metadata *eventMetadata) { metadata.CausationID = id })
 }
 
-// WithHeaders merges a defensive copy of headers into the event metadata.
+// WithHeaders snapshots headers and merges that snapshot into event metadata.
 func WithHeaders(headers map[string]string) EventOption {
+	headers = copyHeaders(headers)
 	return eventOption(func(metadata *eventMetadata) {
 		if headers == nil {
 			return

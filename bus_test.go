@@ -73,6 +73,36 @@ func TestBusRejectsNilBusAndContext(t *testing.T) {
 	assert.ErrorIs(t, bus.Shutdown(nil), ErrNilContext)
 }
 
+func TestBusRejectsOperationsWithCanceledContext(t *testing.T) {
+	bus := NewBus()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	assert.ErrorIs(t, bus.Emit(ctx, deliveryEvent{}), context.Canceled)
+	_, err := Subscribe[deliveryEvent](ctx, bus)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Empty(t, bus.streams)
+}
+
+func TestBusEmitContinuesAfterContextCancellationFollowingAdmission(t *testing.T) {
+	bus := NewBus()
+	ctx, cancel := context.WithCancel(context.Background())
+	event := blockingDeliveryEvent{
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+		once:    &sync.Once{},
+	}
+	emitDone := make(chan error, 1)
+	go func() {
+		emitDone <- bus.Emit(ctx, event)
+	}()
+
+	<-event.entered
+	cancel()
+	close(event.release)
+	assert.NoError(t, <-emitDone)
+}
+
 func TestBusRejectsZeroOccurredAtAfterApplyingOptions(t *testing.T) {
 	assert.ErrorIs(t, NewBus().Emit(context.Background(), testPayload{}, WithOccurredAt(time.Time{})), ErrInvalidOccurredAt)
 }
@@ -111,6 +141,29 @@ func TestBusStreamIsolation(t *testing.T) {
 	}
 }
 
+func TestEstablishedStreamEmissionDoesNotTakeRegistryLock(t *testing.T) {
+	bus := NewBus()
+	subscription, err := Subscribe[deliveryEvent](context.Background(), bus, WithBufferSize(1))
+	require.NoError(t, err)
+	defer subscription.Close()
+
+	bus.streamsMu.Lock()
+	emitDone := make(chan error, 1)
+	go func() {
+		emitDone <- bus.Emit(context.Background(), deliveryEvent{Number: 1})
+	}()
+
+	select {
+	case err := <-emitDone:
+		bus.streamsMu.Unlock()
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		bus.streamsMu.Unlock()
+		require.FailNow(t, "established stream emission blocked on the registry lock")
+	}
+	assert.Equal(t, 1, (<-subscription.Events).Payload.Number)
+}
+
 func TestBusRejectsConflictingPayloadTypesForStream(t *testing.T) {
 	bus := NewBus()
 	_, err := Subscribe[deliveryEvent](context.Background(), bus)
@@ -139,10 +192,19 @@ func TestBusRejectsMultipleStreamTypesForOnePayloadType(t *testing.T) {
 
 func TestBusFullQueueReportsOnlyDroppedSubscriber(t *testing.T) {
 	bus := NewBus()
-	full, err := Subscribe[deliveryEvent](context.Background(), bus, WithBufferSize(1))
+	full, err := Subscribe[deliveryEvent](context.Background(), bus,
+		WithBufferSize(1),
+		WithSubscriptionName("slow-projector"),
+	)
 	require.NoError(t, err)
-	ready, err := Subscribe[deliveryEvent](context.Background(), bus, WithBufferSize(2))
+	ready, err := Subscribe[deliveryEvent](context.Background(), bus,
+		WithBufferSize(2),
+		WithSubscriptionName("ready-projector"),
+	)
 	require.NoError(t, err)
+	assert.NotZero(t, full.ID())
+	assert.NotEqual(t, full.ID(), ready.ID())
+	assert.Equal(t, "slow-projector", full.Name())
 	require.NoError(t, bus.Emit(context.Background(), deliveryEvent{Number: 1}))
 	err = bus.Emit(context.Background(), deliveryEvent{Number: 2})
 	var delivery *DeliveryError
@@ -152,11 +214,41 @@ func TestBusFullQueueReportsOnlyDroppedSubscriber(t *testing.T) {
 	assert.Equal(t, 2, delivery.Attempted)
 	assert.Equal(t, 1, delivery.Delivered)
 	assert.Equal(t, 1, delivery.Dropped)
+	assert.Equal(t, []SubscriptionRef{{ID: full.ID(), Name: "slow-projector"}}, delivery.DroppedSubscriptions)
+	assert.Equal(t, SubscriptionStats{Delivered: 1, Dropped: 1}, full.Stats())
+	assert.Equal(t, SubscriptionStats{Delivered: 2}, ready.Stats())
 	assert.Equal(t, 1, (<-ready.Events).Payload.Number)
 	readySecond := <-ready.Events
 	assert.Equal(t, 2, readySecond.Payload.Number)
 	assert.Equal(t, delivery.EventID, readySecond.ID)
 	assert.Equal(t, 1, (<-full.Events).Payload.Number)
+}
+
+func TestBusEmitsWithoutSubscribersAndGeneratesUniqueEventIDs(t *testing.T) {
+	bus := NewBus()
+	require.NoError(t, bus.Emit(context.Background(), deliveryEvent{Number: -1}))
+
+	subscription, err := Subscribe[deliveryEvent](context.Background(), bus, WithBufferSize(64))
+	require.NoError(t, err)
+	seen := make(map[string]struct{}, 64)
+	for number := range 64 {
+		require.NoError(t, bus.Emit(context.Background(), deliveryEvent{Number: number}))
+		event := <-subscription.Events
+		assert.NotEmpty(t, event.ID)
+		_, duplicate := seen[event.ID]
+		assert.False(t, duplicate, "duplicate event ID %q", event.ID)
+		seen[event.ID] = struct{}{}
+	}
+}
+
+func TestZeroValueBusAndPointerPayloadDelivery(t *testing.T) {
+	var bus Bus
+	subscription, err := Subscribe[*pointerTestPayload](context.Background(), &bus)
+	require.NoError(t, err)
+	payload := &pointerTestPayload{}
+	require.NoError(t, bus.Emit(context.Background(), payload))
+	assert.Same(t, payload, (<-subscription.Events).Payload)
+	require.NoError(t, bus.Shutdown(context.Background()))
 }
 
 func TestBusPreservesPerStreamOrdering(t *testing.T) {
@@ -235,6 +327,7 @@ func TestClosedSubscriptionsDoNotAccumulate(t *testing.T) {
 	stream := bus.streams[StreamType("delivery.events")]
 	require.NotNil(t, stream)
 	assert.Empty(t, stream.subscribers)
+	assert.Zero(t, stream.subscriberCount.Load())
 }
 
 func TestBusShutdownPreservesQueuedEventsAndRejectsNewOperations(t *testing.T) {
@@ -311,8 +404,8 @@ func TestBusRejectsOperationsAfterShutdownBegins(t *testing.T) {
 	go func() { shutdownDone <- bus.Shutdown(context.Background()) }()
 
 	require.Eventually(t, func() bool {
-		bus.mu.Lock()
-		defer bus.mu.Unlock()
+		bus.lifecycleMu.Lock()
+		defer bus.lifecycleMu.Unlock()
 		return bus.state == busShuttingDown || bus.state == busClosed
 	}, time.Second, time.Millisecond)
 
@@ -339,8 +432,8 @@ func TestBusShutdownContextCancellationDoesNotStopShutdown(t *testing.T) {
 	shutdownDone := make(chan error, 1)
 	go func() { shutdownDone <- bus.Shutdown(ctx) }()
 	require.Eventually(t, func() bool {
-		bus.mu.Lock()
-		defer bus.mu.Unlock()
+		bus.lifecycleMu.Lock()
+		defer bus.lifecycleMu.Unlock()
 		return bus.state == busShuttingDown
 	}, time.Second, time.Millisecond)
 	cancel()

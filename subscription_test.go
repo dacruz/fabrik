@@ -41,4 +41,7 @@ func TestSubscriptionRejectsUnsupportedAndEmptyPayloadTypes(t *testing.T) {
 func TestNilSubscriptionCloseIsSafe(t *testing.T) {
 	var subscription *Subscription[testPayload]
 	assert.NotPanics(t, subscription.Close)
+	assert.Zero(t, subscription.ID())
+	assert.Empty(t, subscription.Name())
+	assert.Equal(t, SubscriptionStats{}, subscription.Stats())
 }

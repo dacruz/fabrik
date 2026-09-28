@@ -10,4 +10,7 @@
 // The bus does not run application handlers. Consumers read Subscription.Events
 // and decide how to process each Event. Payloads are not cloned, while event
 // headers are copied at each delivery boundary.
+//
+// Contexts passed to Emit and Subscribe control admission only. Cancellation
+// after admission does not interrupt delivery or close a subscription.
 package fabrik

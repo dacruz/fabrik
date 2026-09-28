@@ -4,17 +4,20 @@ import (
 	"context"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 // Bus owns event delivery state.
 type Bus struct {
-	mu           sync.Mutex
-	streams      map[StreamType]*stream
-	streamTypes  map[reflect.Type]StreamType
-	state        busState
-	admitted     sync.WaitGroup
-	shutdownDone chan struct{}
+	lifecycleMu      sync.Mutex
+	streamsMu        sync.RWMutex
+	streams          map[StreamType]*stream
+	registrations    sync.Map
+	nextSubscriberID atomic.Uint64
+	state            busState
+	admitted         sync.WaitGroup
+	shutdownDone     chan struct{}
 }
 
 type busState uint8
@@ -28,9 +31,13 @@ const (
 // NewBus creates an empty event bus.
 func NewBus() *Bus {
 	return &Bus{
-		streams:     make(map[StreamType]*stream),
-		streamTypes: make(map[reflect.Type]StreamType),
+		streams: make(map[StreamType]*stream),
 	}
+}
+
+type streamRegistration struct {
+	streamType StreamType
+	stream     *stream
 }
 
 type queuedEvent struct {
@@ -40,16 +47,21 @@ type queuedEvent struct {
 }
 
 type stream struct {
-	mu          sync.Mutex
-	payloadType reflect.Type
-	subscribers map[*subscriber]struct{}
+	mu              sync.Mutex
+	payloadType     reflect.Type
+	subscribers     map[*subscriber]struct{}
+	subscriberCount atomic.Int64
 }
 
 type subscriber struct {
-	stream  *stream
-	deliver func(queuedEvent) bool
-	closed  bool
-	closeFn func()
+	stream    *stream
+	id        uint64
+	name      string
+	delivered atomic.Uint64
+	dropped   atomic.Uint64
+	deliver   func(queuedEvent, map[string]string) bool
+	closed    bool
+	closeFn   func()
 }
 
 // closeLocked closes and unregisters the subscriber. The stream lock must be
@@ -60,6 +72,7 @@ func (s *subscriber) closeLocked() {
 	}
 	s.closed = true
 	delete(s.stream.subscribers, s)
+	s.stream.subscriberCount.Add(-1)
 	if s.closeFn != nil {
 		s.closeFn()
 	}
@@ -70,6 +83,8 @@ func (s *subscriber) closeLocked() {
 // Emit publishes a payload to every active subscription for its stream.
 // Delivery to a full subscription queue is dropped and reported through a
 // DeliveryError; other subscribers may already have received the event.
+// The context controls admission only; cancellation after admission does not
+// interrupt delivery.
 func (b *Bus) Emit(ctx context.Context, payload EventPayload, opts ...EventOption) error {
 	if b == nil {
 		return ErrNilBus
@@ -111,30 +126,51 @@ func (b *Bus) Emit(ctx context.Context, payload EventPayload, opts ...EventOptio
 		return err
 	}
 	event := queuedEvent{id: id, metadata: metadata, payload: payload}
+	var headerCopies []map[string]string
+	if metadata.Headers != nil {
+		headerCopies = makeHeaderCopies(metadata.Headers, int(stream.subscriberCount.Load()))
+	}
 	stream.mu.Lock()
 	attempted := len(stream.subscribers)
-	dropped := 0
-	for subscriber := range stream.subscribers {
-		if !subscriber.deliver(event) {
-			dropped++
+	if metadata.Headers != nil {
+		for len(headerCopies) < attempted {
+			headerCopies = append(headerCopies, copyHeaders(metadata.Headers))
 		}
+	}
+	dropped := 0
+	var droppedSubscriptions []SubscriptionRef
+	subscriberIndex := 0
+	for subscriber := range stream.subscribers {
+		var headers map[string]string
+		if metadata.Headers != nil {
+			headers = headerCopies[subscriberIndex]
+		}
+		if !subscriber.deliver(event, headers) {
+			dropped++
+			droppedSubscriptions = append(droppedSubscriptions, SubscriptionRef{
+				ID:   subscriber.id,
+				Name: subscriber.name,
+			})
+		}
+		subscriberIndex++
 	}
 	stream.mu.Unlock()
 	if dropped > 0 {
 		return &DeliveryError{
-			EventID:    id,
-			StreamType: streamType,
-			Attempted:  attempted,
-			Delivered:  attempted - dropped,
-			Dropped:    dropped,
+			EventID:              id,
+			StreamType:           streamType,
+			Attempted:            attempted,
+			Delivered:            attempted - dropped,
+			Dropped:              dropped,
+			DroppedSubscriptions: droppedSubscriptions,
 		}
 	}
 	return nil
 }
 
 func (b *Bus) admit(ctx context.Context) (func(), error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	b.lifecycleMu.Lock()
+	defer b.lifecycleMu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -147,7 +183,9 @@ func (b *Bus) admit(ctx context.Context) (func(), error) {
 
 // Shutdown stops admission, waits for admitted operations, and then closes
 // subscriptions. Buffered events remain readable from their closed channels;
-// Shutdown does not wait for application consumers to process them.
+// Shutdown does not wait for application consumers to process them. A caller's
+// context controls how long that caller waits, but an initiated shutdown
+// continues independently.
 func (b *Bus) Shutdown(ctx context.Context) error {
 	if b == nil {
 		return ErrNilBus
@@ -159,14 +197,14 @@ func (b *Bus) Shutdown(ctx context.Context) error {
 		return err
 	}
 
-	b.mu.Lock()
+	b.lifecycleMu.Lock()
 	if b.state == busOpen {
 		b.state = busShuttingDown
 		b.shutdownDone = make(chan struct{})
 		go b.finishShutdown(b.shutdownDone)
 	}
 	done := b.shutdownDone
-	b.mu.Unlock()
+	b.lifecycleMu.Unlock()
 
 	select {
 	case <-done:
@@ -179,12 +217,12 @@ func (b *Bus) Shutdown(ctx context.Context) error {
 func (b *Bus) finishShutdown(done chan struct{}) {
 	b.admitted.Wait()
 
-	b.mu.Lock()
+	b.streamsMu.RLock()
 	streams := make([]*stream, 0, len(b.streams))
 	for _, stream := range b.streams {
 		streams = append(streams, stream)
 	}
-	b.mu.Unlock()
+	b.streamsMu.RUnlock()
 
 	for _, stream := range streams {
 		stream.mu.Lock()
@@ -194,33 +232,30 @@ func (b *Bus) finishShutdown(done chan struct{}) {
 		stream.mu.Unlock()
 	}
 
-	b.mu.Lock()
+	b.lifecycleMu.Lock()
 	b.state = busClosed
-	b.mu.Unlock()
+	b.lifecycleMu.Unlock()
 	close(done)
 }
 
 func (b *Bus) registerStream(streamType StreamType, payloadType reflect.Type) (*stream, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	if registration, ok := b.registrations.Load(payloadType); ok {
+		return registeredStream(payloadType, streamType, registration.(streamRegistration))
+	}
+
+	b.streamsMu.Lock()
+	defer b.streamsMu.Unlock()
+	if registration, ok := b.registrations.Load(payloadType); ok {
+		return registeredStream(payloadType, streamType, registration.(streamRegistration))
+	}
 	if b.streams == nil {
 		b.streams = make(map[StreamType]*stream)
-	}
-	if b.streamTypes == nil {
-		b.streamTypes = make(map[reflect.Type]StreamType)
-	}
-	if existing, ok := b.streamTypes[payloadType]; ok && existing != streamType {
-		return nil, &PayloadTypeConflictError{
-			PayloadType: payloadType,
-			Existing:    existing,
-			Requested:   streamType,
-		}
 	}
 	if existing, ok := b.streams[streamType]; ok {
 		if existing.payloadType != payloadType {
 			return nil, &StreamTypeConflictError{StreamType: streamType, Existing: existing.payloadType, Requested: payloadType}
 		}
-		b.streamTypes[payloadType] = streamType
+		b.registrations.Store(payloadType, streamRegistration{streamType: streamType, stream: existing})
 		return existing, nil
 	}
 	stream := &stream{
@@ -228,6 +263,28 @@ func (b *Bus) registerStream(streamType StreamType, payloadType reflect.Type) (*
 		subscribers: make(map[*subscriber]struct{}),
 	}
 	b.streams[streamType] = stream
-	b.streamTypes[payloadType] = streamType
+	b.registrations.Store(payloadType, streamRegistration{streamType: streamType, stream: stream})
 	return stream, nil
+}
+
+func registeredStream(payloadType reflect.Type, requested StreamType, registration streamRegistration) (*stream, error) {
+	if registration.streamType != requested {
+		return nil, &PayloadTypeConflictError{
+			PayloadType: payloadType,
+			Existing:    registration.streamType,
+			Requested:   requested,
+		}
+	}
+	return registration.stream, nil
+}
+
+func makeHeaderCopies(headers map[string]string, count int) []map[string]string {
+	if count <= 0 {
+		return nil
+	}
+	copies := make([]map[string]string, count)
+	for index := range copies {
+		copies[index] = copyHeaders(headers)
+	}
+	return copies
 }
