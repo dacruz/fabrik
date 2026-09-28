@@ -2,9 +2,12 @@
 
 Fabrik is a small, process-local, typed publish/subscribe bus for Go.
 Payloads define their logical stream identity, and every active subscription
-to that stream receives each emitted event.
+is offered each emitted event. Delivery is best-effort: an event is dropped
+for an individual subscription when that subscription's bounded queue is full.
 
 ## Install
+
+Fabrik requires Go 1.26 or newer.
 
 ```sh
 go get github.com/dacruz/fabrik/v2
@@ -34,7 +37,9 @@ func main() {
 	ctx := context.Background()
 	bus := fabrik.NewBus()
 
-	subscription, err := fabrik.Subscribe[OrderCreated](ctx, bus)
+	subscription, err := fabrik.Subscribe[OrderCreated](ctx, bus,
+		fabrik.WithSubscriptionName("order-projector"),
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -59,19 +64,23 @@ func main() {
   depend on payload fields because subscriptions resolve it from the payload
   type's zero value.
 - A bus has one stream per `StreamType` value.
-- Every subscription to a stream receives each event independently.
+- Every subscription to a stream is offered each event independently.
 - Subscription queues are bounded and default to 128 events.
 - Delivery does not wait for subscriber consumption. Emitters for the same
   stream are serialized; a full queue drops only that subscriber's delivery
   and returns a `*fabrik.DeliveryError`.
 - A delivery error is a partial-success result: other subscribers may already
   have received the event. Do not retry it as though emission were atomic.
+- Every subscription has a bus-local unique ID, an optional name, and
+  concurrency-safe delivered/dropped counters available through `Stats()`.
+  Delivery errors identify subscriptions whose queues were full.
 - Delivery is at-most-once and events are delivered in emission order per
   stream.
 - Payloads are not cloned. Callers are responsible for synchronizing mutable
   payload data after emission.
-- Event headers are copied for every subscriber, so consumers cannot mutate
-  each other's header maps.
+- Header options snapshot their input maps when created. Event headers are also
+  copied for every subscriber, so producers and consumers cannot mutate each
+  other's header maps.
 
 ## Lifecycle
 
@@ -86,6 +95,13 @@ closed after admitted operations finish. Shutdown does not wait for application
 consumers to process buffered events; consumers can continue reading those
 events from the closed buffered channels, and applications should wait for
 their consumer goroutines separately when processing completion is required.
+
+The contexts passed to `Emit` and `Subscribe` are admission contexts. A context
+that is already canceled rejects the operation. Once the operation has been
+admitted, later cancellation does not interrupt stream registration or event
+delivery and does not own the lifetime of a subscription. `Shutdown` is
+different: each caller's context controls how long that caller waits, while a
+shutdown that has already started continues in the background.
 
 ## Errors
 
@@ -106,7 +122,8 @@ Stable error categories are exposed through `errors.Is`, including:
 
 Use `errors.As` for structured details such as dropped delivery counts and
 conflicting payload types. A `DeliveryError` includes the event ID and the
-attempted, delivered, and dropped subscriber counts.
+attempted, delivered, and dropped subscriber counts, plus the IDs and optional
+names of subscriptions whose queues were full.
 
 ## Development
 
@@ -115,8 +132,16 @@ make test
 make test-race
 make test-cover
 make vet
+make benchmark
 ```
 
 Fabrik is intentionally process-local. Durable storage, replay, retries,
 consumer groups, wildcard streams, and network transport are outside the
 current scope.
+
+## Releasing
+
+Merging a pull request creates a patch release by default. Apply exactly one of
+the `release:patch`, `release:minor`, `release:major`, or `release:none` labels
+to override that behavior. Major releases must also update the Go module path
+before merge.

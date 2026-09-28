@@ -34,18 +34,23 @@ func TestEventZeroValue(t *testing.T) {
 
 func TestEventHeadersCopyInputAndIsolateConsumers(t *testing.T) {
 	input := map[string]string{"tenant": "one"}
-	metadata := eventMetadata{}
-	WithHeaders(input).applyEvent(&metadata)
+	option := WithHeaders(input)
 	input["tenant"] = "mutated"
+	metadata := eventMetadata{}
+	option.applyEvent(&metadata)
 
 	assert.Equal(t, "one", metadata.Headers["tenant"])
+	metadata.Headers["tenant"] = "first emission"
+	secondMetadata := eventMetadata{}
+	option.applyEvent(&secondMetadata)
+	assert.Equal(t, "one", secondMetadata.Headers["tenant"])
 
-	first := cloneHeaders(metadata.Headers)
-	second := cloneHeaders(metadata.Headers)
+	first := cloneHeaders(secondMetadata.Headers)
+	second := cloneHeaders(secondMetadata.Headers)
 	first["tenant"] = "consumer-one"
 	assert.Equal(t, "consumer-one", first["tenant"])
 	assert.Equal(t, "one", second["tenant"])
-	assert.Equal(t, "one", metadata.Headers["tenant"])
+	assert.Equal(t, "one", secondMetadata.Headers["tenant"])
 
 	empty := eventMetadata{}
 	WithHeaders(map[string]string{}).applyEvent(&empty)
@@ -72,9 +77,14 @@ func TestEventOptionsApplyMetadataInOrder(t *testing.T) {
 }
 
 func TestStructuredErrorsExposeStableMessagesAndCategories(t *testing.T) {
-	delivery := &DeliveryError{StreamType: "orders", Dropped: 2}
+	delivery := &DeliveryError{
+		StreamType:           "orders",
+		Dropped:              2,
+		DroppedSubscriptions: []SubscriptionRef{{ID: 7, Name: "projector"}},
+	}
 	assert.Equal(t, `fabrik: dropped 2 delivery(s) for stream type "orders"`, delivery.Error())
 	assert.ErrorIs(t, delivery, ErrDelivery)
+	assert.Equal(t, uint64(7), delivery.DroppedSubscriptions[0].ID)
 
 	conflict := &StreamTypeConflictError{
 		StreamType: "orders",

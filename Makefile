@@ -1,4 +1,4 @@
-.PHONY: deps build test test-race test-cover vet ci verify
+.PHONY: deps build test test-race test-cover benchmark vet ci verify
 
 deps:
 	go mod download
@@ -14,6 +14,9 @@ test-race:
 
 test-cover:
 	go test -cover ./...
+
+benchmark:
+	go test -bench=. -benchmem ./...
 
 vet:
 	go vet ./...
