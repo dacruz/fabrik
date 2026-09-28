@@ -11,10 +11,10 @@ import (
 type Bus struct {
 	mu           sync.Mutex
 	streams      map[StreamType]*stream
+	streamTypes  map[reflect.Type]StreamType
 	state        busState
 	admitted     sync.WaitGroup
 	shutdownDone chan struct{}
-	shutdownErr  error
 }
 
 type busState uint8
@@ -26,20 +26,23 @@ const (
 )
 
 // NewBus creates an empty event bus.
-func NewBus() *Bus { return &Bus{streams: make(map[StreamType]*stream)} }
+func NewBus() *Bus {
+	return &Bus{
+		streams:     make(map[StreamType]*stream),
+		streamTypes: make(map[reflect.Type]StreamType),
+	}
+}
 
 type queuedEvent struct {
-	id          string
-	streamType  StreamType
-	payloadType reflect.Type
-	metadata    eventMetadata
-	payload     EventPayload
+	id       string
+	metadata eventMetadata
+	payload  EventPayload
 }
 
 type stream struct {
 	mu          sync.Mutex
 	payloadType reflect.Type
-	subscribers []*subscriber
+	subscribers map[*subscriber]struct{}
 }
 
 type subscriber struct {
@@ -49,17 +52,25 @@ type subscriber struct {
 	closeFn func()
 }
 
-func (s *subscriber) close() {
+// closeLocked closes and unregisters the subscriber. The stream lock must be
+// held by the caller.
+func (s *subscriber) closeLocked() {
 	if s.closed {
 		return
 	}
 	s.closed = true
+	delete(s.stream.subscribers, s)
 	if s.closeFn != nil {
 		s.closeFn()
 	}
+	s.deliver = nil
+	s.closeFn = nil
 }
 
-func (b *Bus) Emit(ctx context.Context, payload EventPayload, opts ...EventOptions) error {
+// Emit publishes a payload to every active subscription for its stream.
+// Delivery to a full subscription queue is dropped and reported through a
+// DeliveryError; other subscribers may already have received the event.
+func (b *Bus) Emit(ctx context.Context, payload EventPayload, opts ...EventOption) error {
 	if b == nil {
 		return ErrNilBus
 	}
@@ -99,17 +110,24 @@ func (b *Bus) Emit(ctx context.Context, payload EventPayload, opts ...EventOptio
 	if err != nil {
 		return err
 	}
-	event := queuedEvent{id: id, streamType: streamType, payloadType: payloadType, metadata: metadata, payload: payload}
+	event := queuedEvent{id: id, metadata: metadata, payload: payload}
 	stream.mu.Lock()
+	attempted := len(stream.subscribers)
 	dropped := 0
-	for _, subscriber := range stream.subscribers {
+	for subscriber := range stream.subscribers {
 		if !subscriber.deliver(event) {
 			dropped++
 		}
 	}
 	stream.mu.Unlock()
 	if dropped > 0 {
-		return &DeliveryError{StreamType: streamType, Dropped: dropped}
+		return &DeliveryError{
+			EventID:    id,
+			StreamType: streamType,
+			Attempted:  attempted,
+			Delivered:  attempted - dropped,
+			Dropped:    dropped,
+		}
 	}
 	return nil
 }
@@ -128,7 +146,8 @@ func (b *Bus) admit(ctx context.Context) (func(), error) {
 }
 
 // Shutdown stops admission, waits for admitted operations, and then closes
-// subscriptions after their queued events have become drainable.
+// subscriptions. Buffered events remain readable from their closed channels;
+// Shutdown does not wait for application consumers to process them.
 func (b *Bus) Shutdown(ctx context.Context) error {
 	if b == nil {
 		return ErrNilBus
@@ -151,10 +170,7 @@ func (b *Bus) Shutdown(ctx context.Context) error {
 
 	select {
 	case <-done:
-		b.mu.Lock()
-		err := b.shutdownErr
-		b.mu.Unlock()
-		return err
+		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -172,15 +188,14 @@ func (b *Bus) finishShutdown(done chan struct{}) {
 
 	for _, stream := range streams {
 		stream.mu.Lock()
-		for _, subscriber := range stream.subscribers {
-			subscriber.close()
+		for subscriber := range stream.subscribers {
+			subscriber.closeLocked()
 		}
 		stream.mu.Unlock()
 	}
 
 	b.mu.Lock()
 	b.state = busClosed
-	b.shutdownErr = nil
 	b.mu.Unlock()
 	close(done)
 }
@@ -191,13 +206,28 @@ func (b *Bus) registerStream(streamType StreamType, payloadType reflect.Type) (*
 	if b.streams == nil {
 		b.streams = make(map[StreamType]*stream)
 	}
+	if b.streamTypes == nil {
+		b.streamTypes = make(map[reflect.Type]StreamType)
+	}
+	if existing, ok := b.streamTypes[payloadType]; ok && existing != streamType {
+		return nil, &PayloadTypeConflictError{
+			PayloadType: payloadType,
+			Existing:    existing,
+			Requested:   streamType,
+		}
+	}
 	if existing, ok := b.streams[streamType]; ok {
 		if existing.payloadType != payloadType {
 			return nil, &StreamTypeConflictError{StreamType: streamType, Existing: existing.payloadType, Requested: payloadType}
 		}
+		b.streamTypes[payloadType] = streamType
 		return existing, nil
 	}
-	stream := &stream{payloadType: payloadType}
+	stream := &stream{
+		payloadType: payloadType,
+		subscribers: make(map[*subscriber]struct{}),
+	}
 	b.streams[streamType] = stream
+	b.streamTypes[payloadType] = streamType
 	return stream, nil
 }

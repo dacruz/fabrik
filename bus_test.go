@@ -2,6 +2,7 @@ package fabrik
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"sync"
 	"testing"
@@ -22,6 +23,15 @@ func (conflictingDeliveryEvent) StreamType() StreamType { return "delivery.event
 type separateDeliveryEvent struct{ Number int }
 
 func (separateDeliveryEvent) StreamType() StreamType { return "separate.delivery.events" }
+
+type unstableDeliveryEvent struct{ Stream StreamType }
+
+func (event unstableDeliveryEvent) StreamType() StreamType {
+	if event.Stream == "" {
+		return "unstable.delivery.events.default"
+	}
+	return event.Stream
+}
 
 type blockingDeliveryEvent struct {
 	entered chan struct{}
@@ -54,9 +64,12 @@ func TestBusRejectsNilBusAndContext(t *testing.T) {
 	assert.ErrorIs(t, nilBus.Shutdown(context.Background()), ErrNilBus)
 
 	bus := NewBus()
+	//nolint:staticcheck // Passing nil deliberately verifies the public validation contract.
 	assert.ErrorIs(t, bus.Emit(nil, deliveryEvent{}), ErrNilContext)
+	//nolint:staticcheck // Passing nil deliberately verifies the public validation contract.
 	_, err = Subscribe[deliveryEvent](nil, bus)
 	assert.ErrorIs(t, err, ErrNilContext)
+	//nolint:staticcheck // Passing nil deliberately verifies the public validation contract.
 	assert.ErrorIs(t, bus.Shutdown(nil), ErrNilContext)
 }
 
@@ -110,6 +123,20 @@ func TestBusRejectsConflictingPayloadTypesForStream(t *testing.T) {
 	assert.Equal(t, reflectType[conflictingDeliveryEvent](), conflict.Requested)
 }
 
+func TestBusRejectsMultipleStreamTypesForOnePayloadType(t *testing.T) {
+	bus := NewBus()
+	_, err := Subscribe[unstableDeliveryEvent](context.Background(), bus)
+	require.NoError(t, err)
+
+	err = bus.Emit(context.Background(), unstableDeliveryEvent{Stream: "unstable.delivery.events.other"})
+	var conflict *PayloadTypeConflictError
+	require.ErrorAs(t, err, &conflict)
+	assert.ErrorIs(t, err, ErrPayloadTypeConflict)
+	assert.Equal(t, reflect.TypeFor[unstableDeliveryEvent](), conflict.PayloadType)
+	assert.Equal(t, StreamType("unstable.delivery.events.default"), conflict.Existing)
+	assert.Equal(t, StreamType("unstable.delivery.events.other"), conflict.Requested)
+}
+
 func TestBusFullQueueReportsOnlyDroppedSubscriber(t *testing.T) {
 	bus := NewBus()
 	full, err := Subscribe[deliveryEvent](context.Background(), bus, WithBufferSize(1))
@@ -121,9 +148,14 @@ func TestBusFullQueueReportsOnlyDroppedSubscriber(t *testing.T) {
 	var delivery *DeliveryError
 	require.ErrorAs(t, err, &delivery)
 	assert.ErrorIs(t, err, ErrDelivery)
+	assert.NotEmpty(t, delivery.EventID)
+	assert.Equal(t, 2, delivery.Attempted)
+	assert.Equal(t, 1, delivery.Delivered)
 	assert.Equal(t, 1, delivery.Dropped)
 	assert.Equal(t, 1, (<-ready.Events).Payload.Number)
-	assert.Equal(t, 2, (<-ready.Events).Payload.Number)
+	readySecond := <-ready.Events
+	assert.Equal(t, 2, readySecond.Payload.Number)
+	assert.Equal(t, delivery.EventID, readySecond.ID)
 	assert.Equal(t, 1, (<-full.Events).Payload.Number)
 }
 
@@ -157,13 +189,22 @@ func TestBusSerializesConcurrentEmittersPerStream(t *testing.T) {
 	}
 	group.Wait()
 	seen := make(map[int]bool, emitters*perEmitter)
-	for number := 0; number < emitters*perEmitter; number++ {
-		seen[(<-subscription.Events).Payload.Number] = true
+	lastSequence := make([]int, emitters)
+	for emitter := range lastSequence {
+		lastSequence[emitter] = -1
+	}
+	for range emitters * perEmitter {
+		value := (<-subscription.Events).Payload.Number
+		emitter := value / perEmitter
+		sequence := value % perEmitter
+		require.Greater(t, sequence, lastSequence[emitter], "emitter %d delivered out of order", emitter)
+		lastSequence[emitter] = sequence
+		seen[value] = true
 	}
 	assert.Len(t, seen, emitters*perEmitter)
 }
 
-func TestSubscriptionCloseIsIdempotentAndDrainsQueuedEvents(t *testing.T) {
+func TestSubscriptionCloseIsIdempotentAndPreservesQueuedEvents(t *testing.T) {
 	bus := NewBus()
 	subscription, err := Subscribe[deliveryEvent](context.Background(), bus, WithBufferSize(2))
 	require.NoError(t, err)
@@ -172,6 +213,9 @@ func TestSubscriptionCloseIsIdempotentAndDrainsQueuedEvents(t *testing.T) {
 
 	subscription.Close()
 	subscription.Close()
+	assert.Empty(t, subscription.subscriber.stream.subscribers)
+	assert.Nil(t, subscription.subscriber.deliver)
+	assert.Nil(t, subscription.subscriber.closeFn)
 
 	assert.Equal(t, 1, (<-subscription.Events).Payload.Number)
 	assert.Equal(t, 2, (<-subscription.Events).Payload.Number)
@@ -180,7 +224,20 @@ func TestSubscriptionCloseIsIdempotentAndDrainsQueuedEvents(t *testing.T) {
 	assert.NoError(t, bus.Emit(context.Background(), deliveryEvent{Number: 3}))
 }
 
-func TestBusShutdownDrainsQueuedEventsAndRejectsNewOperations(t *testing.T) {
+func TestClosedSubscriptionsDoNotAccumulate(t *testing.T) {
+	bus := NewBus()
+	for range 100 {
+		subscription, err := Subscribe[deliveryEvent](context.Background(), bus)
+		require.NoError(t, err)
+		subscription.Close()
+	}
+
+	stream := bus.streams[StreamType("delivery.events")]
+	require.NotNil(t, stream)
+	assert.Empty(t, stream.subscribers)
+}
+
+func TestBusShutdownPreservesQueuedEventsAndRejectsNewOperations(t *testing.T) {
 	bus := NewBus()
 	subscription, err := Subscribe[deliveryEvent](context.Background(), bus, WithBufferSize(2))
 	require.NoError(t, err)
@@ -292,6 +349,59 @@ func TestBusShutdownContextCancellationDoesNotStopShutdown(t *testing.T) {
 	close(blockingEvent.release)
 	assert.NoError(t, <-emitDone)
 	assert.NoError(t, bus.Shutdown(context.Background()))
+}
+
+func TestBusEmitCloseAndShutdownAreSafeConcurrently(t *testing.T) {
+	const iterations = 50
+	const emitsPerIteration = 100
+
+	for range iterations {
+		bus := NewBus()
+		subscription, err := Subscribe[deliveryEvent](context.Background(), bus, WithBufferSize(8))
+		require.NoError(t, err)
+
+		start := make(chan struct{})
+		errorsFound := make(chan error, emitsPerIteration+1)
+		var group sync.WaitGroup
+
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			for number := range emitsPerIteration {
+				err := bus.Emit(context.Background(), deliveryEvent{Number: number})
+				if err != nil && !errors.Is(err, ErrDelivery) && !errors.Is(err, ErrBusClosed) {
+					errorsFound <- err
+				}
+			}
+		}()
+
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			for range 10 {
+				subscription.Close()
+			}
+		}()
+
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			if err := bus.Shutdown(context.Background()); err != nil {
+				errorsFound <- err
+			}
+		}()
+
+		close(start)
+		group.Wait()
+		close(errorsFound)
+		for err := range errorsFound {
+			require.NoError(t, err)
+		}
+		require.NoError(t, bus.Shutdown(context.Background()))
+	}
 }
 
 func reflectType[T any]() reflect.Type { return reflect.TypeFor[T]() }

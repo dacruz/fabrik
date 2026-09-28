@@ -4,7 +4,7 @@ Status: Draft
 
 This document is the working design for v2. It is intentionally isolated from
 the v1 packages. The implementation will use the module root at
-`github.com/dacruz/fabrik`; this document remains under `docs/v2`.
+`github.com/dacruz/fabrik/v2`; this document remains under `docs/v2`.
 
 ## Goal
 
@@ -39,7 +39,7 @@ type EventPayload interface {
 	StreamType() StreamType
 }
 
-type EventOptions interface {
+type EventOption interface {
 	applyEvent(*eventMetadata)
 }
 
@@ -53,14 +53,14 @@ type eventMetadata struct {
 type Bus struct { /* registry, queues, and lifecycle */ }
 
 func NewBus() *Bus
-func (b *Bus) Emit(ctx context.Context, payload EventPayload, opts ...EventOptions) error
+func (b *Bus) Emit(ctx context.Context, payload EventPayload, opts ...EventOption) error
 
-func WithOccurredAt(at time.Time) EventOptions
-func WithCorrelationID(id string) EventOptions
-func WithCausationID(id string) EventOptions
-func WithHeaders(headers map[string]string) EventOptions
+func WithOccurredAt(at time.Time) EventOption
+func WithCorrelationID(id string) EventOption
+func WithCausationID(id string) EventOption
+func WithHeaders(headers map[string]string) EventOption
 
-type SubscriptionOptions interface {
+type SubscriptionOption interface {
 	applySubscription(*subscriptionConfig)
 }
 
@@ -68,8 +68,8 @@ type subscriptionConfig struct {
 	bufferSize int
 }
 
-func Subscribe[T EventPayload](ctx context.Context, b *Bus, opts ...SubscriptionOptions) (*Subscription[T], error)
-func WithBufferSize(size int) SubscriptionOptions
+func Subscribe[T EventPayload](ctx context.Context, b *Bus, opts ...SubscriptionOption) (*Subscription[T], error)
+func WithBufferSize(size int) SubscriptionOption
 
 type Subscription[T any] struct {
 	Events <-chan Event[T]
@@ -79,7 +79,7 @@ func (s *Subscription[T]) Close()
 func (b *Bus) Shutdown(ctx context.Context) error
 ```
 
-`EventOptions` and `SubscriptionOptions` intentionally contain unexported
+`EventOption` and `SubscriptionOption` intentionally contain unexported
 methods. This keeps the option sets closed: callers can use options provided
 by Fabrik, but cannot define new options outside the package.
 
@@ -115,12 +115,16 @@ var (
 	ErrNilBus              = errors.New("fabrik: nil bus")
 	ErrNilContext          = errors.New("fabrik: nil context")
 	ErrNilPayload          = errors.New("fabrik: nil payload")
+	ErrPayloadTypeConflict = errors.New("fabrik: payload type conflict")
 	ErrStreamTypeConflict  = errors.New("fabrik: stream type conflict")
 	ErrUnsupportedPayloadType = errors.New("fabrik: unsupported payload type")
 )
 
 type DeliveryError struct {
+	EventID    string
 	StreamType StreamType
+	Attempted  int
+	Delivered  int
 	Dropped    int
 }
 
@@ -148,6 +152,16 @@ func (e *StreamTypeConflictError) Error() string {
 func (e *StreamTypeConflictError) Unwrap() error {
 	return ErrStreamTypeConflict
 }
+
+type PayloadTypeConflictError struct {
+	PayloadType reflect.Type
+	Existing    StreamType
+	Requested   StreamType
+}
+
+func (e *PayloadTypeConflictError) Unwrap() error {
+	return ErrPayloadTypeConflict
+}
 ```
 
 `errors.Is` matches stable categories such as `ErrDelivery` and
@@ -159,7 +173,7 @@ return an error or require a separate subscription-closed error.
 `Emit` creates the event internally:
 
 ```go
-func (b *Bus) Emit(ctx context.Context, payload EventPayload, opts ...EventOptions) error {
+func (b *Bus) Emit(ctx context.Context, payload EventPayload, opts ...EventOption) error {
 	// Validate b, ctx, and payload, and pass the bus admission boundary first.
 	id, err := newEventID()
 	if err != nil {
@@ -282,15 +296,19 @@ implementation is considered complete.
 - Each subscription has an independent bounded queue.
 - `Emit` does not wait for a slow consumer.
 - A full consumer queue causes that delivery to be dropped and is reported by
-  the returned error. Other consumers still receive the event.
+  the returned error. Other consumers still receive the event. This is partial
+  success, so callers must not blindly retry the whole emission.
 - Events are delivered in emission order per stream. With concurrent emitters,
   order is the order at the stream's serialization point.
 - Delivery is at-most-once. Queueing counts as delivery; there are no
   acknowledgements, retries, persistence, replay, or redelivery.
-- Closing a subscription is idempotent and drains events already queued before
-  the close becomes visible.
-- Shutdown rejects new emits and subscriptions, then closes active
-  subscriptions after queued events have been drained.
+- Closing a subscription is idempotent, stops future delivery, and preserves
+  events already buffered so they remain readable before the channel reports
+  that it is closed.
+- Shutdown rejects new emits and subscriptions, waits for admitted operations,
+  and then closes active subscriptions. Buffered events remain readable after
+  shutdown returns; applications wait for their own consumers when processing
+  completion matters.
 - `Emit` generates an event containing at least a unique event ID and
   `OccurredAt`.
 - A consumer handler is application code. The bus only queues and delivers
@@ -339,6 +357,12 @@ deliver an event or create a subscription, and leaves the existing registry
 entry unchanged. A registration remains on the bus after all subscriptions
 close, and an emit with no subscribers still registers its payload type.
 
+The bus also keeps the reverse mapping from an exact `reflect.Type` to its
+`StreamType`. If one payload type returns different stream identities across
+values, the later operation returns `*PayloadTypeConflictError` rather than
+silently routing subscribers and emitted values to different streams. This
+turns the stable-identity requirement into an enforced runtime invariant.
+
 The framework must not add received-at, attempt, or consumer identity fields
 until those concepts exist in the delivery contract. Metadata that sounds
 useful but has no defined semantics becomes a long-lived lie.
@@ -381,9 +405,9 @@ pass this boundary return `ErrBusClosed`.
 `Shutdown` transitions the bus to `shuttingDown`, preventing new emits and
 subscriptions. After all admitted operations finish, it closes active
 subscriptions. Closing a subscription preserves events already queued so
-consumers can drain them before the channel closes. A subscription close is
-serialized with stream delivery: once close becomes visible, later emissions
-do not target that subscription.
+consumers can read them before the closed channel reports no more values. A
+subscription close is serialized with stream delivery: once close becomes
+visible, later emissions do not target that subscription.
 
 A canceled context before an operation is admitted rejects that operation. If
 the context is canceled after admission, the operation may still complete. If
@@ -409,7 +433,10 @@ These decisions are now settled:
 2. The default subscription queue size is `128`, with a per-subscription
    override.
 3. Full queues drop only that subscriber's delivery and return a
-   `DeliveryError`. Emit never waits for consumer processing.
+   `DeliveryError` containing the event ID and attempted, delivered, and
+   dropped counts. Emit never waits for consumer processing. Because other
+   subscribers may already have received the event, callers must not treat the
+   error as an atomic failure and blindly retry it.
 4. V2.0 is fan-out only. Consumer groups are out of scope.
 5. Event headers use `map[string]string`, copied defensively at delivery.
 6. A canceled context rejects a new `Emit` or `Subscribe`; it does not remove
@@ -453,6 +480,7 @@ are rejected as a conflict.
 The implementation must include tests for:
 
 - Stream identity and exact Go-type conflicts.
+- Rejection of unstable stream identities for one Go payload type.
 - Pointer and value payload handling.
 - Empty stream type and typed-nil payload rejection.
 - Option ordering and final metadata validation.
@@ -460,7 +488,7 @@ The implementation must include tests for:
 - Fan-out to every active subscription.
 - Independent bounded queues, non-blocking delivery, and `DeliveryError`.
 - Per-stream ordering and concurrent emitters.
-- Idempotent subscription close and queued-event draining.
+- Idempotent subscription close and preservation of queued events.
 - Shutdown races and rejected operations after shutdown begins.
 
 The concurrency tests must pass under the race detector.
@@ -481,7 +509,7 @@ The concurrency tests must pass under the race detector.
 ### Phase 3: lifecycle
 
 - [x] Add idempotent subscription close and graceful bus shutdown.
-- [x] Test queued-event draining, concurrent close, shutdown races, and rejected
+- [x] Test queued-event preservation, concurrent close, shutdown races, and rejected
   operations after shutdown begins.
 
 ### Phase 4: public examples and hardening

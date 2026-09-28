@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,18 +26,20 @@ func TestBusHandlesConcurrentProducersAndConsumersAcrossStreams(t *testing.T) {
 	type streamConfig struct {
 		streamIndex int
 		emit        func(context.Context, int) error
-		consume     func() int
+		consume     func(context.Context) (int, error)
 		totalEvents int
 	}
 	type streamResult struct {
 		streamIndex int
 		values      []int
+		err         error
 	}
 
 	const producers = 4
 	const eventsPerProducer = 100
 	totalEvents := producers * eventsPerProducer
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	bus := NewBus()
 
 	orders, err := Subscribe[stressOrder](ctx, bus, WithBufferSize(totalEvents))
@@ -52,8 +55,13 @@ func TestBusHandlesConcurrentProducersAndConsumersAcrossStreams(t *testing.T) {
 			emit: func(ctx context.Context, number int) error {
 				return bus.Emit(ctx, stressOrder{Number: number})
 			},
-			consume: func() int {
-				return (<-orders.Events).Payload.Number
+			consume: func(ctx context.Context) (int, error) {
+				select {
+				case event := <-orders.Events:
+					return event.Payload.Number, nil
+				case <-ctx.Done():
+					return 0, ctx.Err()
+				}
 			},
 		},
 		{
@@ -61,8 +69,13 @@ func TestBusHandlesConcurrentProducersAndConsumersAcrossStreams(t *testing.T) {
 			emit: func(ctx context.Context, number int) error {
 				return bus.Emit(ctx, stressInvoice{Number: number})
 			},
-			consume: func() int {
-				return (<-invoices.Events).Payload.Number
+			consume: func(ctx context.Context) (int, error) {
+				select {
+				case event := <-invoices.Events:
+					return event.Payload.Number, nil
+				case <-ctx.Done():
+					return 0, ctx.Err()
+				}
 			},
 		},
 		{
@@ -70,8 +83,13 @@ func TestBusHandlesConcurrentProducersAndConsumersAcrossStreams(t *testing.T) {
 			emit: func(ctx context.Context, number int) error {
 				return bus.Emit(ctx, stressShipment{Number: number})
 			},
-			consume: func() int {
-				return (<-shipments.Events).Payload.Number
+			consume: func(ctx context.Context) (int, error) {
+				select {
+				case event := <-shipments.Events:
+					return event.Payload.Number, nil
+				case <-ctx.Done():
+					return 0, ctx.Err()
+				}
 			},
 		},
 	}
@@ -86,7 +104,12 @@ func TestBusHandlesConcurrentProducersAndConsumersAcrossStreams(t *testing.T) {
 			defer consumers.Done()
 			values := make([]int, 0, stream.totalEvents)
 			for range stream.totalEvents {
-				values = append(values, stream.consume())
+				value, err := stream.consume(ctx)
+				if err != nil {
+					consumerValues <- streamResult{streamIndex: stream.streamIndex, values: values, err: err}
+					return
+				}
+				values = append(values, value)
 			}
 			consumerValues <- streamResult{streamIndex: stream.streamIndex, values: values}
 		}()
@@ -116,6 +139,7 @@ func TestBusHandlesConcurrentProducersAndConsumersAcrossStreams(t *testing.T) {
 	consumers.Wait()
 	close(consumerValues)
 	for result := range consumerValues {
+		require.NoError(t, result.err, "consumer for stream %d timed out after %d events", result.streamIndex, len(result.values))
 		assert.Len(t, result.values, totalEvents)
 		expected := make([]int, totalEvents)
 		for number := range totalEvents {

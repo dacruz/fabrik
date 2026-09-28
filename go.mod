@@ -1,4 +1,4 @@
-module github.com/dacruz/fabrik
+module github.com/dacruz/fabrik/v2
 
 go 1.26.0
 
